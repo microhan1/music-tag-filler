@@ -20,6 +20,7 @@ import pipeline
 import prefs as prefs_mod
 import tags
 from i18n import t
+import match
 from match import Candidate
 from search_itunes import COUNTRIES
 
@@ -128,6 +129,7 @@ class App:
         self._loading_entries = False
         self._loading_shown = False
         self._loading_tick = 0
+        self._loading_key = "msg_loading"
 
         self.var_lang = tk.StringVar(value=i18n.LANG_NAMES[i18n.current_lang()])
         self.var_country = tk.StringVar(value=self.prefs.effective_country())
@@ -399,7 +401,8 @@ class App:
     def _busy(self) -> bool:
         return self.worker is not None and self.worker.is_alive()
 
-    def _set_loading(self, on: bool) -> None:
+    def _set_loading(self, on: bool, key: str = "msg_loading") -> None:
+        self._loading_key = key
         if on and not self._loading_shown:
             self._loading_shown = True
             self.lbl_loading.place(relx=0.5, rely=0.35, anchor="center")
@@ -411,7 +414,7 @@ class App:
     def _animate_loading(self) -> None:
         if not self._loading_shown or self._closing:
             return
-        self.lbl_loading.configure(text=t("msg_loading") + " " + "." * (self._loading_tick % 4))
+        self.lbl_loading.configure(text=t(self._loading_key) + " " + "." * (self._loading_tick % 4))
         self._loading_tick += 1
         self.root.after(400, self._animate_loading)
 
@@ -633,8 +636,6 @@ class App:
             self.var_query.set(s.query if s else "")
         finally:
             self._loading_entries = False
-        self._loading_shown = False
-        self._loading_tick = 0
         self._update_file_info()
         self._paint_fields()
         self._show_cover(s.cover if s else None)
@@ -778,6 +779,8 @@ class App:
         if not query:
             return
         s.query = query
+        s.candidates, s.result = [], None
+        self._fill_tree([])
         self._set_status("msg_searching")
         self._mark_searching([s], True)
         self._run(self._search_text_job, s, query)
@@ -799,11 +802,16 @@ class App:
             return
         self._set_status("msg_searching")
         self._mark_searching([s], True)
+        self._set_loading(True, "msg_fingerprinting")
         self._run(self._search_sound_job, s)
 
     def _search_sound_job(self, s: FileState) -> None:
         result = pipeline.search_sound(s.path, self.prefs, self.var_query.get().strip(), s.info.length,
                                        on_wait=self._on_wait, cancel=self.cancel_event)
+        if result.candidates and s.candidates:
+            # fingerprint hits join the text-search rows; rank() merges duplicates and re-sorts
+            result.candidates = match.rank(result.candidates + s.candidates, result.query_title,
+                                           result.query_artist, s.info.length)
         self._ui(self._search_done, s, result)
 
     def _search_done(self, s: FileState, result: pipeline.SearchResult) -> None:

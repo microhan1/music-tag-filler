@@ -40,6 +40,7 @@
   "status_saving": "保存中 {index}/{total} · {name}",
   "msg_searching": "搜索中…",
   "msg_loading": "正在加载搜索结果",
+  "msg_fingerprinting": "正在按声音查找（结果会加入列表）",
   "msg_results": "{count} 个候选",
   "msg_no_results": "没有结果。请修改关键词，或点击“按声音查找”",
   "msg_batch_done": "搜索完成：{total} 个文件中 {auto} 个已自动选择。请检查列表后点击“全部保存”",
