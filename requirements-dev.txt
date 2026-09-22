@@ -1,0 +1,5 @@
+-r requirements.txt
+pytest>=8
+# only for regenerating samples/ with make_samples.py
+soundfile>=0.12
+numpy>=1.26

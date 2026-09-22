@@ -2,8 +2,8 @@
 
     python -m pytest tests
 
-Fixtures are generated into tests/fixtures by samples/make_samples.py
-(needs soundfile + numpy); the m4a is a silent container built by hand.
+Fixtures are copied from samples/ into tests/fixtures; the m4a is a silent
+container built by hand, so no audio encoder is needed.
 """
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ import io
 import json
 import os
 import shutil
-import subprocess
 import sys
 
 import pytest
@@ -22,14 +21,25 @@ sys.path.insert(0, ROOT)
 
 import tags  # noqa: E402
 
+SAMPLES = os.path.join(ROOT, "samples")
 FIXTURES = os.path.join(ROOT, "tests", "fixtures")
 NAMES = ("sample-a.mp3", "sample-b.flac", "sample-c.ogg", "sample-d.m4a")
 
 
 def _ensure_fixtures() -> None:
-    if all(os.path.exists(os.path.join(FIXTURES, n)) for n in NAMES):
-        return
-    subprocess.run([sys.executable, os.path.join(ROOT, "samples", "make_samples.py"), FIXTURES, "--m4a"], check=True)
+    """mp3/flac/ogg come from the committed samples; the silent m4a container is
+    built here in pure Python, so the tests need neither soundfile nor numpy."""
+    os.makedirs(FIXTURES, exist_ok=True)
+    for name in NAMES[:3]:
+        target = os.path.join(FIXTURES, name)
+        if not os.path.exists(target):
+            shutil.copy(os.path.join(SAMPLES, name), target)
+    m4a = os.path.join(FIXTURES, NAMES[3])
+    if not os.path.exists(m4a):
+        sys.path.insert(0, SAMPLES)
+        import make_samples  # noqa: E402
+
+        make_samples.write_m4a(m4a)
 
 
 def _sha(path: str) -> str:

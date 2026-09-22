@@ -34,6 +34,10 @@ python main.py song.mp3 --undo               # 백업에서 원래 태그로 되
 
 `python main.py --help`가 OS 언어(한국어 · English · 中文 · 日本語)로 옵션을 보여 줍니다.
 
+exe도 같은 인자를 받습니다(`music-tag-filler.exe song.mp3 --auto`). 다만 창 모드로 빌드되어 콘솔에 직접 출력이 안 보이는 환경이 있으니, 그럴 때는 출력을 파일로 보내거나(`> log.txt`) 소스로 실행하세요. 인자가 있어도 출력할 콘솔이 없으면 그 파일을 담은 창이 열립니다.
+
+시험은 `pip install -r requirements-dev.txt` 후 `python -m pytest tests`로 돌립니다. 픽스처는 `samples/`의 음원을 씁니다.
+
 ## 소리로 찾기 준비
 
 - `third_party/fpcalc.exe`(Chromaprint)가 필요합니다. 저장소에 동봉되어 있고, 없으면 [Chromaprint Releases](https://github.com/acoustid/chromaprint/releases)에서 `chromaprint-fpcalc-*-windows-x86_64.zip`을 받아 `fpcalc.exe`를 `third_party/`에 넣거나 `settings.json`의 `fpcalc_path`에 경로를 적습니다.

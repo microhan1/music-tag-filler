@@ -34,6 +34,10 @@ python main.py song.mp3 --undo               # バックアップから元のタ
 
 `python main.py --help` は OS の言語（한국어 · English · 中文 · 日本語）でオプションを表示します。
 
+exe も同じ引数を受け付けます（`music-tag-filler.exe song.mp3 --auto`）。ただしウィンドウモードでビルドしているため、環境によってはコンソールに出力が表示されません。その場合は出力をファイルに向けるか（`> log.txt`）、ソースから実行してください。引数があっても出力先のコンソールが無いときは、そのファイルを読み込んだ画面が開きます。
+
+テストは `pip install -r requirements-dev.txt` の後 `python -m pytest tests` で実行します。フィクスチャは `samples/` の音源を使います。
+
 ## 音で探すための準備
 
 - `third_party/fpcalc.exe`（Chromaprint）が必要です。リポジトリに同梱しています。無い場合は [Chromaprint Releases](https://github.com/acoustid/chromaprint/releases) から `chromaprint-fpcalc-*-windows-x86_64.zip` を取得し、`fpcalc.exe` を `third_party/` に置くか、`settings.json` の `fpcalc_path` にパスを書きます。

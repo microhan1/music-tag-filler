@@ -34,6 +34,10 @@ python main.py song.mp3 --undo               # 从备份恢复原始标签
 
 `python main.py --help` 会用操作系统语言（한국어 · English · 中文 · 日本語）显示选项。
 
+exe 也接受相同的参数（`music-tag-filler.exe song.mp3 --auto`）。但它是窗口模式程序，某些环境下控制台不会显示输出；此时请把输出重定向到文件（`> log.txt`）或从源码运行。有参数但没有可输出的控制台时，会打开加载了这些文件的窗口。
+
+测试：`pip install -r requirements-dev.txt`，然后 `python -m pytest tests`。测试素材来自 `samples/` 中的音频。
+
 ## 按声音查找的准备
 
 - 需要 `third_party/fpcalc.exe`（Chromaprint），仓库已附带。若缺失，请从 [Chromaprint Releases](https://github.com/acoustid/chromaprint/releases) 下载 `chromaprint-fpcalc-*-windows-x86_64.zip`，把 `fpcalc.exe` 放入 `third_party/`，或在 `settings.json` 的 `fpcalc_path` 中填写路径。

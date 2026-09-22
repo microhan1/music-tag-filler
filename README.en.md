@@ -34,6 +34,10 @@ python main.py song.mp3 --undo               # restores the original tags from t
 
 `python main.py --help` prints the options in your OS language (한국어 · English · 中文 · 日本語).
 
+The exe accepts the same arguments (`music-tag-filler.exe song.mp3 --auto`). It is built as a windowed app, so in some environments the console shows no output; redirect it to a file (`> log.txt`) or run from source. With arguments but no console to print to, the window opens with those files loaded.
+
+Tests: `pip install -r requirements-dev.txt`, then `python -m pytest tests`. Fixtures come from the audio in `samples/`.
+
 ## Find by sound setup
 
 - `third_party/fpcalc.exe` (Chromaprint) is bundled in the repository. If missing, download `chromaprint-fpcalc-*-windows-x86_64.zip` from [Chromaprint Releases](https://github.com/acoustid/chromaprint/releases) and put `fpcalc.exe` in `third_party/`, or set `fpcalc_path` in `settings.json`.
