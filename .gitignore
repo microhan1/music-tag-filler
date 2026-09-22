@@ -24,6 +24,7 @@ env/
 
 # App runtime files
 settings.json
+acoustid_key.txt
 *.tagbak.json
 samples/*.tagbak.json
 tests/fixtures/

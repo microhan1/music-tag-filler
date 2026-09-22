@@ -37,7 +37,7 @@ python main.py song.mp3 --undo               # バックアップから元のタ
 ## 音で探すための準備
 
 - `third_party/fpcalc.exe`（Chromaprint）が必要です。リポジトリに同梱しています。無い場合は [Chromaprint Releases](https://github.com/acoustid/chromaprint/releases) から `chromaprint-fpcalc-*-windows-x86_64.zip` を取得し、`fpcalc.exe` を `third_party/` に置くか、`settings.json` の `fpcalc_path` にパスを書きます。
-- AcoustID API キーが必要です。[acoustid.org/new-application](https://acoustid.org/new-application) で無料取得し、`settings.json` の `acoustid_key` に書きます。
+- Releases の exe には AcoustID アプリケーションキーが入っているのでそのまま使えます。ソースから実行する場合は [acoustid.org/new-application](https://acoustid.org/new-application) で無料取得したキーを `settings.json` の `acoustid_key` に書くか、1 行の `acoustid_key.txt`（リポジトリには入らない）に置くと build.bat が exe に同梱します。
 
 ## 情報の出典
 

@@ -37,7 +37,7 @@ python main.py song.mp3 --undo               # restores the original tags from t
 ## Find by sound setup
 
 - `third_party/fpcalc.exe` (Chromaprint) is bundled in the repository. If missing, download `chromaprint-fpcalc-*-windows-x86_64.zip` from [Chromaprint Releases](https://github.com/acoustid/chromaprint/releases) and put `fpcalc.exe` in `third_party/`, or set `fpcalc_path` in `settings.json`.
-- An AcoustID API key is required. Register one for free at [acoustid.org/new-application](https://acoustid.org/new-application) and put it in `acoustid_key` in `settings.json`.
+- The exe from Releases carries an AcoustID application key and works as is. When running from source, register a free key at [acoustid.org/new-application](https://acoustid.org/new-application) and put it in `acoustid_key` in `settings.json`, or in a one-line `acoustid_key.txt` (never committed) that build.bat bundles into the exe.
 
 ## Data sources
 

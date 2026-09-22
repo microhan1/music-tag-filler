@@ -10,12 +10,16 @@ python -m pip install -r requirements.txt
 
 set FPCALC=
 if exist "third_party\fpcalc.exe" set FPCALC=--add-binary "third_party\fpcalc.exe;third_party"
+rem acoustid_key.txt (git-ignored) holds the AcoustID application key for the exe.
+set KEYFILE=
+if exist "acoustid_key.txt" set KEYFILE=--add-data "acoustid_key.txt;."
 
 python -m PyInstaller --noconfirm --clean --onefile --windowed ^
   --name music-tag-filler ^
   --add-data "lang;lang" ^
   --add-data "third_party\LICENSE-chromaprint;third_party" ^
   %FPCALC% ^
+  %KEYFILE% ^
   --collect-data tkinterdnd2 ^
   main.py
 

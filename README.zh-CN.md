@@ -37,7 +37,7 @@ python main.py song.mp3 --undo               # 从备份恢复原始标签
 ## 按声音查找的准备
 
 - 需要 `third_party/fpcalc.exe`（Chromaprint），仓库已附带。若缺失，请从 [Chromaprint Releases](https://github.com/acoustid/chromaprint/releases) 下载 `chromaprint-fpcalc-*-windows-x86_64.zip`，把 `fpcalc.exe` 放入 `third_party/`，或在 `settings.json` 的 `fpcalc_path` 中填写路径。
-- 需要 AcoustID API 密钥。在 [acoustid.org/new-application](https://acoustid.org/new-application) 免费申请，填入 `settings.json` 的 `acoustid_key`。
+- Releases 中的 exe 已内置 AcoustID 应用密钥，可直接使用。从源码运行时，请在 [acoustid.org/new-application](https://acoustid.org/new-application) 免费申请密钥，填入 `settings.json` 的 `acoustid_key`，或写入单行文件 `acoustid_key.txt`（不会提交到仓库），build.bat 会把它打包进 exe。
 
 ## 信息来源
 

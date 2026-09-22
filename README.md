@@ -37,7 +37,7 @@ python main.py song.mp3 --undo               # 백업에서 원래 태그로 되
 ## 소리로 찾기 준비
 
 - `third_party/fpcalc.exe`(Chromaprint)가 필요합니다. 저장소에 동봉되어 있고, 없으면 [Chromaprint Releases](https://github.com/acoustid/chromaprint/releases)에서 `chromaprint-fpcalc-*-windows-x86_64.zip`을 받아 `fpcalc.exe`를 `third_party/`에 넣거나 `settings.json`의 `fpcalc_path`에 경로를 적습니다.
-- AcoustID API 키가 필요합니다. [acoustid.org/new-application](https://acoustid.org/new-application)에서 무료로 발급받아 `settings.json`의 `acoustid_key`에 적습니다.
+- Releases의 exe에는 AcoustID 애플리케이션 키가 들어 있어 바로 됩니다. 소스로 실행할 때는 [acoustid.org/new-application](https://acoustid.org/new-application)에서 무료로 키를 발급받아 `settings.json`의 `acoustid_key`에 적거나, `acoustid_key.txt`(저장소에 올라가지 않음)에 한 줄로 넣어 두면 build.bat이 exe에 함께 넣습니다.
 
 ## 정보 출처
 

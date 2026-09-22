@@ -16,9 +16,10 @@ from match import SOURCE_ACOUSTID, SOURCE_MB, Candidate
 from search_mb import CAA_RELEASE
 
 LOOKUP_URL = "https://api.acoustid.org/v2/lookup"
-# Register a free application key at https://acoustid.org/new-application and
-# put it here or in settings.json ("acoustid_key"). Empty = no built-in key.
-DEFAULT_API_KEY = ""
+# The application key (https://acoustid.org/new-application) is not in the
+# source: build.bat bundles acoustid_key.txt (git-ignored) into the exe, and a
+# key in settings.json ("acoustid_key") always takes precedence over it.
+KEY_FILE = "acoustid_key.txt"
 FPCALC_NAME = "fpcalc.exe" if sys.platform == "win32" else "fpcalc"
 
 
@@ -28,6 +29,21 @@ class FpcalcMissing(Exception):
 
 class NoApiKey(Exception):
     pass
+
+
+def default_api_key() -> str:
+    """Built-in key from acoustid_key.txt beside main.py or inside the bundle; '' if absent."""
+    import i18n
+
+    for base in (i18n.app_dir(), i18n.resource_dir()):
+        try:
+            with open(os.path.join(base, KEY_FILE), "r", encoding="utf-8") as f:
+                key = f.read().strip()
+            if key:
+                return key
+        except OSError:
+            continue
+    return ""
 
 
 def find_fpcalc(configured: str | None = None) -> str | None:
@@ -68,7 +84,7 @@ def fingerprint(path: str, fpcalc: str | None = None) -> tuple[float, str]:
 
 def lookup(fp: str, duration: float, api_key: str | None = None, *, on_wait=None,
            cancel: threading.Event | None = None) -> list[Candidate]:
-    key = (api_key or DEFAULT_API_KEY).strip()
+    key = (api_key or default_api_key()).strip()
     if not key:
         raise NoApiKey()
     resp = net.request("POST", LOOKUP_URL, data={
