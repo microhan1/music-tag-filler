@@ -39,6 +39,7 @@
   "status_batch": "검색 중 {index}/{total} · {name}",
   "status_saving": "저장 중 {index}/{total} · {name}",
   "msg_searching": "검색 중…",
+  "msg_loading": "검색 결과를 불러오는 중",
   "msg_results": "후보 {count}개",
   "msg_no_results": "결과가 없습니다. 검색어를 고치거나 소리로 찾기를 눌러 보세요",
   "msg_batch_done": "검색 완료: {total}개 파일 중 {auto}개 자동 선택. 목록을 확인한 뒤 전체 저장을 누르세요",

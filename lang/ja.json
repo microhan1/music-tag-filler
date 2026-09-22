@@ -39,6 +39,7 @@
   "status_batch": "検索中 {index}/{total} · {name}",
   "status_saving": "保存中 {index}/{total} · {name}",
   "msg_searching": "検索中…",
+  "msg_loading": "検索結果を読み込み中",
   "msg_results": "候補 {count} 件",
   "msg_no_results": "結果がありません。検索語を直すか「音で探す」を試してください",
   "msg_batch_done": "検索完了: {total} 件中 {auto} 件を自動選択しました。一覧を確認して「すべて保存」を押してください",

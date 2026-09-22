@@ -83,6 +83,7 @@ class FileState:
     confirmed: bool = False
     saved: bool = False
     error: str | None = None
+    searching: bool = False  # a search for this file is queued or running
 
     def original(self, field: str) -> str:
         return getattr(self.info.tags, field) if self.info else ""
@@ -125,6 +126,8 @@ class App:
         self._closing = False
         self._offline = False
         self._loading_entries = False
+        self._loading_shown = False
+        self._loading_tick = 0
 
         self.var_lang = tk.StringVar(value=i18n.LANG_NAMES[i18n.current_lang()])
         self.var_country = tk.StringVar(value=self.prefs.effective_country())
@@ -343,6 +346,10 @@ class App:
         self.tree.tag_configure("odd", background=STRIPE)
         self.tree.tag_configure("good", foreground=GOOD_FG)
         self.tree.tag_configure("fair", foreground=FAIR_FG)
+        # floats over the table while the current file's search is still running
+        self.lbl_loading = tk.Label(self.tree, bg=CARD, fg=MUTED, font=self.font_bold, padx=p(16), pady=p(10))
+        self._loading_shown = False
+        self._loading_tick = 0
 
         # ---- action bar
         bar = ttk.Frame(root, padding=(p(16), p(6), p(16), p(12)))
@@ -392,6 +399,28 @@ class App:
     def _busy(self) -> bool:
         return self.worker is not None and self.worker.is_alive()
 
+    def _set_loading(self, on: bool) -> None:
+        if on and not self._loading_shown:
+            self._loading_shown = True
+            self.lbl_loading.place(relx=0.5, rely=0.35, anchor="center")
+            self._animate_loading()
+        elif not on and self._loading_shown:
+            self._loading_shown = False
+            self.lbl_loading.place_forget()
+
+    def _animate_loading(self) -> None:
+        if not self._loading_shown or self._closing:
+            return
+        self.lbl_loading.configure(text=t("msg_loading") + " " + "." * (self._loading_tick % 4))
+        self._loading_tick += 1
+        self.root.after(400, self._animate_loading)
+
+    def _mark_searching(self, states: list, on: bool) -> None:
+        for s in states:
+            s.searching = on
+        if self.current is not None:
+            self._set_loading(self.current.searching)
+
     def _set_busy(self, busy: bool) -> None:
         state = "disabled" if busy else "normal"
         for w in (self.btn_search, self.btn_fp, self.btn_apply, self.btn_save, self.btn_save_all, self.btn_undo,
@@ -438,6 +467,7 @@ class App:
         except Exception as exc:  # never let a worker die silently
             self._ui(self._show_error, str(exc))
         finally:
+            self._ui(self._mark_searching, list(self.files), False)
             self._ui(self._set_busy, False)
 
     def _ui(self, fn, *args, **kwargs) -> None:
@@ -507,6 +537,7 @@ class App:
             return
         self.files = []
         self.lst_files.delete(0, "end")
+        self._set_loading(False)
         self._show_file(None)
         self._refresh_list()
 
@@ -537,6 +568,7 @@ class App:
         total = len(states)
         first_shown = False
         net_error = False
+        self._ui(self._mark_searching, states, True)
         for idx, s in enumerate(states, 1):
             if self.cancel_event.is_set():
                 break
@@ -547,6 +579,7 @@ class App:
                 s.query = pipeline.query_text(s.info)
             except Exception:
                 s.error = "err_open_failed"
+                self._ui(self._mark_searching, [s], False)
                 self._ui(self._refresh_list)
                 continue
             if not first_shown and self.current is None:
@@ -555,10 +588,12 @@ class App:
             self._ui(self._set_status, "status_batch", index=idx, total=total, name=s.name())
             self._ui(self.progress.configure, {"value": 100.0 * (idx - 1) / total})
             if self._offline or not s.query:
+                self._ui(self._mark_searching, [s], False)
                 continue
             result = pipeline.search_text(s.query, self.var_country.get(), s.info.length,
                                           on_wait=self._on_wait, cancel=self.cancel_event)
             s.result, s.candidates = result, result.candidates
+            s.searching = False
             if pipeline.ERR_NETWORK in result.errors and not result.candidates:
                 net_error = True
             if batch:
@@ -574,6 +609,7 @@ class App:
                             s.cover, s.cover_changed = cover, True
             self._ui(self._after_file_loaded, s)
         auto = sum(1 for s in states if s.auto)
+        self._ui(self._mark_searching, states, False)  # cancelled or skipped files must not spin forever
         if self.cancel_event.is_set():
             self._ui(self._set_status, "status_cancelled")
         elif self._offline or net_error:
@@ -597,10 +633,13 @@ class App:
             self.var_query.set(s.query if s else "")
         finally:
             self._loading_entries = False
+        self._loading_shown = False
+        self._loading_tick = 0
         self._update_file_info()
         self._paint_fields()
         self._show_cover(s.cover if s else None)
         self._fill_tree(s.candidates if s else [])
+        self._set_loading(bool(s and s.searching))
         if s and s.error:
             self._set_status(s.error, name=s.name())
         elif s and s.result and not s.candidates:
@@ -740,10 +779,12 @@ class App:
             return
         s.query = query
         self._set_status("msg_searching")
+        self._mark_searching([s], True)
         self._run(self._search_text_job, s, query)
 
     def _search_text_job(self, s: FileState, query: str) -> None:
         if self._offline and not net.online():
+            self._ui(self._mark_searching, [s], False)
             self._ui(self._set_online, False)
             return
         self._ui(self._set_online, True)
@@ -757,6 +798,7 @@ class App:
             self._set_status("msg_no_files")
             return
         self._set_status("msg_searching")
+        self._mark_searching([s], True)
         self._run(self._search_sound_job, s)
 
     def _search_sound_job(self, s: FileState) -> None:
@@ -766,6 +808,7 @@ class App:
 
     def _search_done(self, s: FileState, result: pipeline.SearchResult) -> None:
         s.result, s.candidates = result, result.candidates
+        self._mark_searching([s], False)
         if self.cancel_event.is_set():
             self._set_status("status_cancelled")
         elif result.errors:

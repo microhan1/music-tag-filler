@@ -39,6 +39,7 @@
   "status_batch": "Searching {index}/{total} · {name}",
   "status_saving": "Saving {index}/{total} · {name}",
   "msg_searching": "Searching…",
+  "msg_loading": "Loading search results",
   "msg_results": "{count} candidates",
   "msg_no_results": "No results. Edit the query or try Find by sound",
   "msg_batch_done": "Search finished: {auto} of {total} files auto-selected. Review the list, then press Save all",
