@@ -18,6 +18,7 @@ import os
 import re
 import struct
 import time
+import zlib
 
 import mutagen
 from mutagen.flac import FLAC, Picture
@@ -190,8 +191,9 @@ def _read_id3(id3) -> tuple[Tags, bytes | None, str]:
         track=_text(id3.get("TRCK")),
         genre=_text(id3.get("TCON")),
     )
+    # some rips carry several front covers; show the front one with the most pixels (largest data)
     pics = [f for f in id3.values() if f.FrameID == "APIC"]
-    pics.sort(key=lambda f: 0 if getattr(f, "type", 0) == 3 else 1)
+    pics.sort(key=lambda f: (0 if getattr(f, "type", 0) == 3 else 1, -len(f.data or b"")))
     if pics:
         return tags, bytes(pics[0].data), str(pics[0].mime or "")
     return tags, None, ""
@@ -477,9 +479,11 @@ def make_backup(path: str, overwrite: bool = False) -> str:
     }
     try:
         head_end, tail_start, extra = _layout(raw, fmt)
+        # ID3 padding and duplicate pictures make the head region up to a few MB;
+        # zlib shrinks the padding to nothing, so the backup stays near cover size.
         record["layout"] = {
-            "head_b64": base64.b64encode(raw[:head_end]).decode("ascii"),
-            "tail_b64": base64.b64encode(raw[tail_start:]).decode("ascii"),
+            "head_z": base64.b64encode(zlib.compress(raw[:head_end], 6)).decode("ascii"),
+            "tail_z": base64.b64encode(zlib.compress(raw[tail_start:], 6)).decode("ascii"),
             "audio_len": tail_start - head_end,
             **extra,
         }
@@ -523,7 +527,7 @@ def restore_backup(path: str) -> bool:
                 current = f.read()
             audio = _audio_bytes(current, fmt, layout)
             if audio is not None and len(audio) == layout.get("audio_len"):
-                rebuilt = base64.b64decode(layout["head_b64"]) + audio + base64.b64decode(layout["tail_b64"])
+                rebuilt = _layout_bytes(layout, "head") + audio + _layout_bytes(layout, "tail")
                 if sha256_bytes(rebuilt) == record.get("sha256"):
                     _atomic_write(path, rebuilt)
                     return True
@@ -537,6 +541,13 @@ def restore_backup(path: str) -> bool:
     if data is None:
         _remove_cover(path)
     return False
+
+
+def _layout_bytes(layout: dict, part: str) -> bytes:
+    """Backups written before compression hold `<part>_b64`; newer ones `<part>_z`."""
+    if f"{part}_z" in layout:
+        return zlib.decompress(base64.b64decode(layout[f"{part}_z"]))
+    return base64.b64decode(layout[f"{part}_b64"])
 
 
 def _remove_cover(path: str) -> None:

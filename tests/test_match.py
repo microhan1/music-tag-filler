@@ -115,3 +115,15 @@ def test_prefs_ignore_wrong_types(tmp_path, monkeypatch):
     assert p.country == "" and p.rename is False and p.cover_max_px == 1000 and p.acoustid_key == ""
     path.write_text("{not json", encoding="utf-8")
     assert prefs.load() == prefs.Prefs()
+
+
+def test_apply_candidate_fill_gaps_vs_overwrite():
+    import pipeline
+    import tags
+
+    cur = tags.Tags(title="A", artist="B", album="Best Album", year="2026", track="3/24")
+    cand = Candidate(title="A", artist="B", album="Orig Album", year="2017", track="1", genre="Pop")
+    filled = pipeline.apply_candidate(cur, cand, overwrite=False)
+    assert (filled.album, filled.year, filled.track, filled.genre) == ("Best Album", "2026", "3/24", "Pop")
+    over = pipeline.apply_candidate(cur, cand, overwrite=True)
+    assert (over.album, over.year, over.track) == ("Orig Album", "2017", "1")

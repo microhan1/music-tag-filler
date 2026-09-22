@@ -564,11 +564,14 @@ class App:
             if batch:
                 pick = pipeline.auto_pick(result)
                 if pick is not None:
+                    # an automatic pick only fills what is missing; the user's
+                    # existing album, year and cover stay unless they apply by hand
                     s.selected, s.auto = pick, True
-                    self._apply_values(s, pick)
-                    cover = pipeline.fetch_cover(pick, on_wait=self._on_wait, cancel=self.cancel_event)
-                    if cover:
-                        s.cover, s.cover_changed = cover, True
+                    self._apply_values(s, pick, overwrite=False)
+                    if not s.cover:
+                        cover = pipeline.fetch_cover(pick, on_wait=self._on_wait, cancel=self.cancel_event)
+                        if cover:
+                            s.cover, s.cover_changed = cover, True
             self._ui(self._after_file_loaded, s)
         auto = sum(1 for s in states if s.auto)
         if self.cancel_event.is_set():
@@ -779,10 +782,8 @@ class App:
         self._set_status("status_cancelled")
 
     # ------------------------------------------------------------ apply / save / undo
-    def _apply_values(self, s: FileState, cand: Candidate) -> None:
-        for key, value in cand.tag_values().items():
-            if value:
-                s.values[key] = value
+    def _apply_values(self, s: FileState, cand: Candidate, overwrite: bool = True) -> None:
+        s.values = pipeline.apply_candidate(s.current_tags(), cand, overwrite).as_dict()
         s.saved = False
 
     def apply_selected(self) -> None:

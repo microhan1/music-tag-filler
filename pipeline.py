@@ -62,6 +62,16 @@ def auto_pick(result: SearchResult) -> Candidate | None:
     return best if best.score >= match.AUTO_SELECT_SCORE else None
 
 
+def apply_candidate(current: tags.Tags, cand: Candidate, overwrite: bool) -> tags.Tags:
+    """Tags after applying a candidate. overwrite=False only fills empty fields,
+    which is what automatic picks do: a best-album rip must keep its album."""
+    merged = current.as_dict()
+    for key, value in cand.tag_values().items():
+        if value and (overwrite or not merged.get(key)):
+            merged[key] = value
+    return tags.Tags.from_dict(merged)
+
+
 def query_text(info: tags.FileInfo) -> str:
     title, artist = initial_query(info)
     return match.build_query(title, artist)

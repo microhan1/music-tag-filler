@@ -66,6 +66,7 @@
   "cli_auto": "一致度 {score} 以上なら確認せずに保存",
   "cli_country": "iTunes 検索の国 (KR, US, JP, …)",
   "cli_rename": "保存時に「アーティスト - タイトル.ext」へ改名",
+  "cli_overwrite": "既存のタグやジャケットも候補の値で上書き（--auto は既定で空欄だけを埋める）",
   "cli_sound": "文字ではなく音で探す",
   "cli_undo": "バックアップ (.tagbak.json) から元のタグに戻す",
   "cli_no_recurse": "サブフォルダを含めない",

@@ -66,6 +66,7 @@
   "cli_auto": "Save without asking when the match is {score} or higher",
   "cli_country": "iTunes search country (KR, US, JP, ...)",
   "cli_rename": "Rename to 'Artist - Title.ext' on save",
+  "cli_overwrite": "Overwrite existing tags and cover with the candidate (--auto only fills empty fields by default)",
   "cli_sound": "Find by sound instead of by text",
   "cli_undo": "Restore the original tags from the backup (.tagbak.json)",
   "cli_no_recurse": "Do not descend into subfolders",

@@ -66,6 +66,7 @@
   "cli_auto": "匹配度达到 {score} 以上时不询问直接保存",
   "cli_country": "iTunes 搜索国家 (KR, US, JP, …)",
   "cli_rename": "保存时重命名为“歌手 - 标题.ext”",
+  "cli_overwrite": "用候选值覆盖已有标签和封面（--auto 默认只填充空字段）",
   "cli_sound": "用声音而不是文字查找",
   "cli_undo": "从备份 (.tagbak.json) 恢复原始标签",
   "cli_no_recurse": "不包含子文件夹",

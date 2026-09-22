@@ -47,6 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--auto", action="store_true", help=t("cli_auto", score=AUTO_SELECT_SCORE))
     p.add_argument("--country", choices=COUNTRIES, help=t("cli_country"))
     p.add_argument("--rename", action="store_true", help=t("cli_rename"))
+    p.add_argument("--overwrite", action="store_true", help=t("cli_overwrite"))
     p.add_argument("--sound", action="store_true", help=t("cli_sound"))
     p.add_argument("--undo", action="store_true", help=t("cli_undo"))
     p.add_argument("--no-recurse", action="store_true", help=t("cli_no_recurse"))
@@ -85,15 +86,6 @@ def _choose(cands: list[Candidate], allow_sound: bool) -> Candidate | str | None
             return "sound"
         if answer.isdigit() and 1 <= int(answer) <= len(cands):
             return cands[int(answer) - 1]
-
-
-def _apply(info: tags.FileInfo, cand: Candidate) -> tags.Tags:
-    values = cand.tag_values()
-    merged = info.tags.as_dict()
-    for key, value in values.items():
-        if value:
-            merged[key] = value
-    return tags.Tags.from_dict(merged)
 
 
 def run_undo(files: list[str]) -> int:
@@ -186,8 +178,13 @@ def run_cli(args: argparse.Namespace) -> int:
         if chosen is None:
             print(t("log_skipped", name=name))
             continue
-        new_tags = _apply(info, chosen)
-        cover = pipeline.fetch_cover(chosen, on_wait=_on_wait)
+        # a hand-picked candidate replaces the fields; --auto only fills gaps unless --overwrite
+        overwrite = args.overwrite or not args.auto
+        new_tags = pipeline.apply_candidate(info.tags, chosen, overwrite)
+        cover = pipeline.fetch_cover(chosen, on_wait=_on_wait) if (overwrite or info.cover is None) else None
+        if new_tags == info.tags and cover is None:
+            print(t("msg_nothing_to_save"))
+            continue
         try:
             res = pipeline.save_file(path, new_tags, cover, prefs)
         except tags.FileLocked:

@@ -66,6 +66,7 @@
   "cli_auto": "일치도 {score} 이상이면 묻지 않고 저장",
   "cli_country": "iTunes 검색 국가 (KR, US, JP, …)",
   "cli_rename": "저장 시 '가수 - 제목.ext'로 파일명 변경",
+  "cli_overwrite": "이미 있는 태그·표지도 후보 값으로 덮어씀 (--auto는 기본적으로 빈 칸만 채움)",
   "cli_sound": "글자 검색 대신 소리로 찾기",
   "cli_undo": "백업(.tagbak.json)에서 원래 태그로 되돌리기",
   "cli_no_recurse": "폴더의 하위 폴더는 제외",

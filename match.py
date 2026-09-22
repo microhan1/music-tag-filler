@@ -107,7 +107,8 @@ def is_generic_name(title: str, artist: str = "") -> bool:
     Such a query must never auto-select a candidate."""
     if artist.strip():
         return False
-    return bool(_GENERIC_RE.match(normalize(title))) or len(normalize(title)) < 3
+    # a one-character CJK title (many Japanese songs) is a real name; digits alone are not
+    return bool(_GENERIC_RE.match(normalize(title)))
 
 
 def build_query(title: str, artist: str) -> str:

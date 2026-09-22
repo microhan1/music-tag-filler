@@ -27,3 +27,6 @@ settings.json
 *.tagbak.json
 samples/*.tagbak.json
 tests/fixtures/
+
+# test music (user files)
+ex/
