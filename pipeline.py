@@ -46,6 +46,22 @@ class SaveResult:
     renamed: bool = False
 
 
+LOG_NAME = "music-tag-filler.log"
+
+
+def log_error(where: str, exc: BaseException) -> None:
+    """Append one line to the log beside the exe; the GUI only shows a short message."""
+    import time
+
+    import i18n
+
+    try:
+        with open(os.path.join(i18n.app_dir(), LOG_NAME), "a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {where}: {exc!r}\n")
+    except OSError:
+        pass
+
+
 def initial_query(info: tags.FileInfo) -> tuple[str, str]:
     """('title', 'artist') from the tags, else guessed from the file name."""
     if info.tags.title:
@@ -107,19 +123,24 @@ def search_sound(path: str, prefs: Prefs, query: str = "", file_length: float | 
     artist, title = match.split_query(query)
     try:
         duration, fp = search_acoustid.fingerprint(path, prefs.fpcalc_path or None)
-    except search_acoustid.FpcalcMissing:
+    except search_acoustid.FpcalcMissing as exc:
+        log_error("fpcalc missing", exc)
         return SearchResult([], [ERR_FPCALC], title, artist)
-    except Exception:
+    except Exception as exc:
+        log_error("fingerprint", exc)
         return SearchResult([], [ERR_FINGERPRINT], title, artist)
     if not fp:
         return SearchResult([], [ERR_FINGERPRINT], title, artist)
     try:
         cands = search_acoustid.lookup(fp, duration, prefs.acoustid_key, on_wait=on_wait, cancel=cancel)
-    except search_acoustid.NoApiKey:
+    except search_acoustid.NoApiKey as exc:
+        log_error("acoustid key", exc)
         return SearchResult([], [ERR_ACOUSTID_KEY], title, artist)
-    except net.RateLimited:
+    except net.RateLimited as exc:
+        log_error("acoustid rate limit", exc)
         return SearchResult([], [ERR_RATE_LIMIT], title, artist)
-    except net.NetworkError:
+    except net.NetworkError as exc:
+        log_error("acoustid network", exc)
         return SearchResult([], [ERR_NETWORK], title, artist)
     # AcoustID sometimes returns recordings without release data; fill the
     # first few from MusicBrainz so the album and year are usable.

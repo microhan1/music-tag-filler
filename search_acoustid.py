@@ -69,12 +69,15 @@ def fingerprint(path: str, fpcalc: str | None = None) -> tuple[float, str]:
         raise FpcalcMissing()
     creation = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     try:
-        proc = subprocess.run([exe, "-json", "-length", "120", path], capture_output=True, timeout=120,
-                              creationflags=creation)
-    except (OSError, subprocess.SubprocessError) as exc:
+        # stdin must be given explicitly: a windowed exe has no console handle to inherit
+        proc = subprocess.run([exe, "-json", "-length", "120", path], stdin=subprocess.DEVNULL,
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120, creationflags=creation)
+    except FileNotFoundError as exc:
         raise FpcalcMissing() from exc
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError(f"fpcalc could not run: {exc!r}") from exc
     if proc.returncode != 0:
-        raise RuntimeError(proc.stderr.decode("utf-8", "replace").strip() or "fpcalc failed")
+        raise RuntimeError(proc.stderr.decode("utf-8", "replace").strip() or f"fpcalc exit {proc.returncode}")
     try:
         data = json.loads(proc.stdout.decode("utf-8", "replace"))
     except ValueError as exc:
@@ -99,7 +102,7 @@ def lookup(fp: str, duration: float, api_key: str | None = None, *, on_wait=None
         err = (data.get("error") or {}).get("message", "") if isinstance(data.get("error"), dict) else ""
         code = (data.get("error") or {}).get("code") if isinstance(data.get("error"), dict) else None
         if code in (4, 5) or "api key" in err.lower():
-            raise NoApiKey()
+            raise NoApiKey(f"{code}: {err}")
         raise net.NetworkError(err or "acoustid error")
     out: list[Candidate] = []
     for result in data.get("results") or []:
