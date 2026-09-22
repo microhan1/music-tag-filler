@@ -1,0 +1,4 @@
+mutagen>=1.47
+requests>=2.31
+Pillow>=10.0
+tkinterdnd2>=0.4
