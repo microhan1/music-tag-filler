@@ -6,8 +6,10 @@ import concurrent.futures
 import dataclasses
 import io
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -55,6 +57,34 @@ GOOD_FG = "#15803d"
 FAIR_FG = "#b45309"
 
 
+def _working_set_mb() -> int | None:
+    """Resident memory of this process in MB (Windows only; None elsewhere)."""
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class Counters(ctypes.Structure):
+            _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD),
+                        ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
+                        ("QuotaPeakPagedPoolUsage", ctypes.c_size_t), ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t), ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                        ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t)]
+
+        counters = Counters()
+        counters.cb = ctypes.sizeof(Counters)
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        psapi = ctypes.WinDLL("psapi", use_last_error=True)
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE  # a 64-bit pseudo handle; c_int would truncate it
+        psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD]
+        if not psapi.GetProcessMemoryInfo(kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb):
+            return None
+        return int(counters.WorkingSetSize // (1024 * 1024))
+    except Exception:
+        return None
+
+
 def _enable_dpi_awareness() -> None:
     """Crisp text on high-DPI screens instead of a bitmap-stretched window."""
     if sys.platform != "win32":
@@ -70,12 +100,46 @@ def _enable_dpi_awareness() -> None:
         pass
 
 
+class CoverStore:
+    """Downloaded or user-picked covers wait on disk, not in memory, until they
+    are saved: a 500-file batch would otherwise hold 100 MB of JPEGs."""
+
+    def __init__(self) -> None:
+        self._dir: str | None = None
+        self._n = 0
+
+    def put(self, data: bytes) -> str:
+        if self._dir is None:
+            self._dir = tempfile.mkdtemp(prefix="music-tag-filler-")
+        self._n += 1
+        path = os.path.join(self._dir, f"cover{self._n}.bin")
+        with open(path, "wb") as f:
+            f.write(data)
+        return path
+
+    @staticmethod
+    def get(key: str | None) -> bytes | None:
+        if not key:
+            return None
+        try:
+            with open(key, "rb") as f:
+                return f.read()
+        except OSError:
+            return None
+
+    def close(self) -> None:
+        if self._dir:
+            shutil.rmtree(self._dir, ignore_errors=True)
+            self._dir = None
+
+
 @dataclasses.dataclass
 class FileState:
     path: str
     info: tags.FileInfo | None = None
     values: dict[str, str] = dataclasses.field(default_factory=dict)
-    cover: bytes | None = None
+    has_cover: bool = False  # the file itself carries a cover (bytes are read on demand)
+    cover_key: str | None = None  # a new cover waiting in the CoverStore
     cover_changed: bool = False
     query: str = ""
     candidates: list[Candidate] = dataclasses.field(default_factory=list)
@@ -102,6 +166,23 @@ class FileState:
     def name(self) -> str:
         return os.path.basename(self.path)
 
+    def attach_info(self, info: tags.FileInfo) -> None:
+        """Keep the tags, drop the cover bytes: they are re-read when shown or saved."""
+        self.has_cover = info.cover is not None
+        info.cover = None
+        self.info = info
+        self.values = info.tags.as_dict()
+
+    def load_cover(self) -> bytes | None:
+        if self.cover_changed:
+            return CoverStore.get(self.cover_key)
+        if self.has_cover:
+            try:
+                return tags.read_cover(self.path)[0]
+            except Exception:
+                return None
+        return None
+
 
 class App:
     def __init__(self, initial_files: list[str] | None = None) -> None:
@@ -121,6 +202,7 @@ class App:
         self.thumb_gen = 0
         self._thumbs: dict[str, ImageTk.PhotoImage] = {}
         self._thumb_misses: set[str] = set()  # URLs that returned nothing; not asked again
+        self.covers = CoverStore()
         self._cover_photo: ImageTk.PhotoImage | None = None
         self._placeholder = ImageTk.PhotoImage(self._placeholder_image())
         self._texts: list[tuple[tk.Misc, str, str]] = []
@@ -136,6 +218,7 @@ class App:
         self.var_lang = tk.StringVar(value=i18n.LANG_NAMES[i18n.current_lang()])
         self.var_country = tk.StringVar(value=self.prefs.effective_country())
         self.var_rename = tk.BooleanVar(value=self.prefs.rename)
+        self.var_save_alert = tk.BooleanVar(value=self.prefs.save_alert)
         self.var_query = tk.StringVar()
         self.var_fields = {f: tk.StringVar() for f in tags.FIELDS}
 
@@ -369,11 +452,16 @@ class App:
         self.btn_undo.grid(row=0, column=3, padx=(p(8), 0))
         self.chk_rename = self._reg(ttk.Checkbutton(bar, variable=self.var_rename, command=self._save_prefs), "opt_rename")
         self.chk_rename.grid(row=0, column=4, padx=(p(20), 0))
+        self.chk_alert = self._reg(ttk.Checkbutton(bar, variable=self.var_save_alert, command=self._save_prefs), "opt_save_alert")
+        self.chk_alert.grid(row=0, column=5, sticky="w", padx=(p(12), 0))
         # progress and status get a row of their own so long messages are not cut off
         self.progress = ttk.Progressbar(bar, mode="determinate", length=p(220))
         self.progress.grid(row=1, column=0, columnspan=2, sticky="w", pady=(p(10), 0))
         self.lbl_status = ttk.Label(bar, anchor="w", style="Muted.TLabel")
         self.lbl_status.grid(row=1, column=2, columnspan=4, sticky="ew", padx=(p(10), 0), pady=(p(10), 0))
+        self.lbl_mem = ttk.Label(bar, anchor="e", style="Small.TLabel")
+        self.lbl_mem.grid(row=1, column=6, sticky="e", padx=(p(10), 0), pady=(p(10), 0))
+        self.root.after(1000, self._tick_memory)
 
         if _HAS_DND:
             for w in (root, self.lst_files, self.tree, self.lbl_cover):
@@ -396,9 +484,21 @@ class App:
             self._set_status(self._status_key, **self._status_kwargs)
 
     # ------------------------------------------------------------ helpers
+    def _tick_memory(self) -> None:
+        if self._closing:
+            return
+        mb = _working_set_mb()
+        self.lbl_mem.configure(text=t("lbl_memory", mb=mb) if mb is not None else "")
+        self.root.after(2000, self._tick_memory)
+
     def _set_status(self, key: str, **kwargs) -> None:
         self._status_key, self._status_kwargs = key, kwargs
         self.lbl_status.configure(text=t(key, **kwargs) if key else "")
+
+    def _set_status_text(self, text: str) -> None:
+        """Already-translated composite text (not re-rendered on language change)."""
+        self._status_key, self._status_kwargs = "", {}
+        self.lbl_status.configure(text=text)
 
     def _busy(self) -> bool:
         return self.worker is not None and self.worker.is_alive()
@@ -543,6 +643,9 @@ class App:
         self.files = []
         self.lst_files.delete(0, "end")
         self._set_loading(False)
+        self._thumbs.clear()
+        self._thumb_misses.clear()
+        self.covers.close()
         self._show_file(None)
         self._refresh_list()
 
@@ -578,9 +681,7 @@ class App:
             if self.cancel_event.is_set():
                 break
             try:
-                s.info = tags.read_file(s.path)
-                s.values = s.info.tags.as_dict()
-                s.cover = s.info.cover
+                s.attach_info(tags.read_file(s.path))
                 s.query = pipeline.query_text(s.info)
             except Exception:
                 s.error = "err_open_failed"
@@ -608,10 +709,10 @@ class App:
                     # existing album, year and cover stay unless they apply by hand
                     s.selected, s.auto = pick, True
                     self._apply_values(s, pick, overwrite=False)
-                    if not s.cover:
+                    if not s.has_cover:
                         cover = pipeline.fetch_cover(pick, on_wait=self._on_wait, cancel=self.cancel_event)
                         if cover:
-                            s.cover, s.cover_changed = cover, True
+                            s.cover_key, s.cover_changed = self.covers.put(cover), True
             self._ui(self._after_file_loaded, s)
         auto = sum(1 for s in states if s.auto)
         self._ui(self._mark_searching, states, False)  # cancelled or skipped files must not spin forever
@@ -640,7 +741,7 @@ class App:
             self._loading_entries = False
         self._update_file_info()
         self._paint_fields()
-        self._show_cover(s.cover if s else None)
+        self._show_cover(s.load_cover() if s else None)
         self._fill_tree(s.candidates if s else [])
         self._set_loading(bool(s and s.searching))
         if s and s.error:
@@ -705,7 +806,7 @@ class App:
         except Exception:
             self._set_status("err_open_failed", name=os.path.basename(path))
             return
-        self.current.cover, self.current.cover_changed, self.current.saved = data, True, False
+        self.current.cover_key, self.current.cover_changed, self.current.saved = self.covers.put(data), True, False
         if self.current.auto:
             self.current.confirmed = True
         self._show_cover(data)
@@ -743,6 +844,8 @@ class App:
             if data:
                 self._ui(self._set_thumb, gen, str(i), c.thumb_url, data)
             else:
+                if len(self._thumb_misses) > 5000:
+                    self._thumb_misses.clear()
                 self._thumb_misses.add(c.thumb_url)
 
         def work() -> None:
@@ -862,7 +965,7 @@ class App:
     def _fetch_cover_job(self, s: FileState, cand: Candidate) -> None:
         data = pipeline.fetch_cover(cand, on_wait=self._on_wait, cancel=self.cancel_event)
         if data:
-            s.cover, s.cover_changed = data, True
+            s.cover_key, s.cover_changed = self.covers.put(data), True
             if s is self.current:
                 self._ui(self._show_cover, data)
         else:
@@ -896,7 +999,7 @@ class App:
             self._ui(self._set_status, "status_saving", index=idx, total=len(states), name=s.name())
             self._ui(self.progress.configure, {"value": 100.0 * (idx - 1) / len(states)})
             try:
-                res = pipeline.save_file(s.path, s.current_tags(), s.cover if s.cover_changed else None,
+                res = pipeline.save_file(s.path, s.current_tags(), s.load_cover() if s.cover_changed else None,
                                          self.prefs, rename=self.var_rename.get())
             except tags.FileLocked:
                 failed.append(s.name())
@@ -905,9 +1008,8 @@ class App:
                 failed.append(s.name())
                 continue
             s.path = res.path
-            s.info = tags.read_file(s.path)
-            s.values = s.info.tags.as_dict()
-            s.cover, s.cover_changed = s.info.cover, False
+            s.attach_info(tags.read_file(s.path))
+            s.cover_key, s.cover_changed = None, False
             s.saved, s.auto, s.confirmed = True, False, True
             last_backup = os.path.basename(res.backup)
             if res.cover_failed:
@@ -926,8 +1028,12 @@ class App:
             lines.append(t("msg_cover_failed"))
         if failed:
             lines.append(t("err_readonly") + ": " + ", ".join(failed))
-        self._set_status("msg_saved", count=saved)
-        if not self._closing:
+        self._set_status_text(" \u00b7 ".join(lines))
+        if self._closing:
+            return
+        if failed:
+            messagebox.showerror(t("dlg_error"), "\n".join(lines), parent=self.root)
+        elif self.var_save_alert.get():
             messagebox.showinfo(t("dlg_done"), "\n".join(lines), parent=self.root)
 
     def undo_current(self) -> None:
@@ -949,9 +1055,8 @@ class App:
         except tags.FileLocked:
             self._ui(self._set_status, "err_readonly")
             return
-        s.info = tags.read_file(s.path)
-        s.values = s.info.tags.as_dict()
-        s.cover, s.cover_changed = s.info.cover, False
+        s.attach_info(tags.read_file(s.path))
+        s.cover_key, s.cover_changed = None, False
         s.saved, s.auto, s.confirmed, s.selected = False, False, False, None
         self._ui(self._undo_done, s, exact)
 
@@ -963,6 +1068,7 @@ class App:
     # ------------------------------------------------------------ settings
     def _save_prefs(self) -> None:
         self.prefs.rename = bool(self.var_rename.get())
+        self.prefs.save_alert = bool(self.var_save_alert.get())
         self.prefs.country = self.var_country.get()
         prefs_mod.save(self.prefs)
 
@@ -988,6 +1094,7 @@ class App:
         if self._busy():
             self.root.after(100, self._close_when_idle)
             return
+        self.covers.close()
         self.root.destroy()
 
 

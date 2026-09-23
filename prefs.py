@@ -17,6 +17,7 @@ class Prefs:
     acoustid_key: str = ""
     fpcalc_path: str = ""
     rename: bool = False
+    save_alert: bool = False  # pop up a dialog after saving; the status line always reports
     cover_max_px: int = 1000
 
     def effective_country(self) -> str:
@@ -39,6 +40,7 @@ def load() -> Prefs:
         acoustid_key=typed("acoustid_key", str).strip(),
         fpcalc_path=typed("fpcalc_path", str),
         rename=typed("rename", bool),
+        save_alert=typed("save_alert", bool),
         cover_max_px=typed("cover_max_px", int),
     )
     if p.country not in COUNTRIES:

@@ -172,6 +172,13 @@ def read_file(path: str) -> FileInfo:
     return FileInfo(os.path.abspath(path), fmt, length, bitrate, rate, tags, cover, mime)
 
 
+def read_cover(path: str) -> tuple[bytes | None, str]:
+    """Just the front cover, read when it is needed for display or saving, so a
+    long file list does not keep every cover's bytes in memory."""
+    info = read_file(path)
+    return info.cover, info.cover_mime
+
+
 def _text(frame) -> str:
     try:
         return str(frame.text[0]) if frame is not None and frame.text else ""
