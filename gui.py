@@ -655,16 +655,29 @@ class App:
             self.frm_files.grid()
         else:
             self.frm_files.grid_remove()
+        # Update rows in place: deleting and re-inserting every row on each refresh
+        # made the list jump and flicker whenever a file was clicked or a field edited.
+        lst = self.lst_files
+        top = lst.yview()[0]
         for i, s in enumerate(self.files):
             mark = CHECK if (s.confirmed or s.auto or s.saved) else " "
-            self.lst_files.delete(i)
-            self.lst_files.insert(i, f" {mark} {s.name()}")
+            label = f" {mark} {s.name()}"
+            if i >= lst.size():
+                lst.insert("end", label)
+            elif lst.get(i) != label:
+                lst.delete(i)
+                lst.insert(i, label)
             fg = DONE_FG if s.saved else AUTO_FG if (s.auto and not s.confirmed) else TEXT
-            self.lst_files.itemconfig(i, foreground=fg)
+            if lst.itemcget(i, "foreground") != fg:
+                lst.itemconfig(i, foreground=fg)
+        while lst.size() > len(self.files):
+            lst.delete("end")
         if self.current is not None and self.current in self.files:
             idx = self.files.index(self.current)
-            self.lst_files.selection_clear(0, "end")
-            self.lst_files.selection_set(idx)
+            if tuple(lst.curselection()) != (idx,):
+                lst.selection_clear(0, "end")
+                lst.selection_set(idx)
+        lst.yview_moveto(top)
 
     def _on_file_select(self, _event=None) -> None:
         sel = self.lst_files.curselection()
