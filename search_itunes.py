@@ -10,6 +10,10 @@ SEARCH_URL = "https://itunes.apple.com/search"
 COUNTRIES = ("KR", "US", "JP", "CN", "TW", "HK", "GB", "DE", "FR")
 COUNTRY_FOR_LANG = {"ko": "KR", "en": "US", "zh-CN": "CN", "ja": "JP"}
 FALLBACK_COUNTRY = "US"
+# Storefronts with no music catalogue: the search API always answers 0 results
+# there, so asking them only costs a request slot. KR was confirmed by probing.
+EMPTY_STOREFRONTS: set[str] = {"KR"}
+_empty_hits: dict[str, int] = {}
 
 
 def artwork(url: str | None, size: int) -> str | None:
@@ -27,11 +31,14 @@ def search(term: str, country: str = "US", limit: int = 20, *, on_wait=None,
     term = (term or "").strip()
     if not term:
         return []
-    # Some storefronts (KR among them) sell no music, so the search there is
-    # always empty; the US store answers Korean queries with the same songs.
-    countries = [country] + [c for c in (FALLBACK_COUNTRY,) if c != country]
+    # The US store answers Korean and Japanese queries too, so it is the fallback
+    # for a storefront that returns nothing; empty storefronts are skipped outright.
+    countries = [c for c in (country, FALLBACK_COUNTRY) if c not in EMPTY_STOREFRONTS]
+    if not countries:
+        countries = [FALLBACK_COUNTRY]
+    countries = list(dict.fromkeys(countries))
     out: list[Candidate] = []
-    for c in countries:
+    for i, c in enumerate(countries):
         if cancel is not None and cancel.is_set():
             break
         params = {"term": term, "country": c, "media": "music", "entity": "song", "limit": limit}
@@ -42,7 +49,16 @@ def search(term: str, country: str = "US", limit: int = 20, *, on_wait=None,
             out.append(_candidate(item))
         if out:
             break
+        if i == 0 and c != FALLBACK_COUNTRY:
+            _note_empty(c)
     return out
+
+
+def _note_empty(country: str) -> None:
+    """Three empty answers in a row and the storefront is skipped for this session."""
+    _empty_hits[country] = _empty_hits.get(country, 0) + 1
+    if _empty_hits[country] >= 3:
+        EMPTY_STOREFRONTS.add(country)
 
 
 def _candidate(item: dict) -> Candidate:

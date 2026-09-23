@@ -2,6 +2,7 @@
 candidates below, action bar at the bottom."""
 from __future__ import annotations
 
+import concurrent.futures
 import dataclasses
 import io
 import os
@@ -119,6 +120,7 @@ class App:
         self.thumb_thread: threading.Thread | None = None
         self.thumb_gen = 0
         self._thumbs: dict[str, ImageTk.PhotoImage] = {}
+        self._thumb_misses: set[str] = set()  # URLs that returned nothing; not asked again
         self._cover_photo: ImageTk.PhotoImage | None = None
         self._placeholder = ImageTk.PhotoImage(self._placeholder_image())
         self._texts: list[tuple[tk.Misc, str, str]] = []
@@ -729,17 +731,25 @@ class App:
             self._start_thumbs(cands, self.thumb_gen)
 
     def _start_thumbs(self, cands: list[Candidate], gen: int) -> None:
-        todo = [(i, c) for i, c in enumerate(cands) if c.thumb_url and c.thumb_url not in self._thumbs]
+        todo = [(i, c) for i, c in enumerate(cands)
+                if c.thumb_url and c.thumb_url not in self._thumbs and c.thumb_url not in self._thumb_misses]
         if not todo:
             return
 
+        def fetch(i: int, c: Candidate) -> None:
+            if gen != self.thumb_gen or self._closing:
+                return
+            data = pipeline.fetch_thumb(c, cancel=self.cancel_event)
+            if data:
+                self._ui(self._set_thumb, gen, str(i), c.thumb_url, data)
+            else:
+                self._thumb_misses.add(c.thumb_url)
+
         def work() -> None:
-            for i, c in todo:
-                if gen != self.thumb_gen or self._closing:
-                    return
-                data = pipeline.fetch_thumb(c, cancel=self.cancel_event)
-                if data:
-                    self._ui(self._set_thumb, gen, str(i), c.thumb_url, data)
+            # top rows first, four at a time: Cover Art Archive answers via a slow redirect
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+                for i, c in todo:
+                    pool.submit(fetch, i, c)
 
         self.thumb_thread = threading.Thread(target=work, daemon=True)
         self.thumb_thread.start()

@@ -7,6 +7,7 @@ machine; no audio file is uploaded anywhere.
 """
 from __future__ import annotations
 
+import collections
 import threading
 import time
 from typing import Callable
@@ -38,22 +39,44 @@ class RateLimited(Exception):
 
 
 class _Throttle:
-    """Keeps at least `interval` seconds between requests to one host."""
+    """Per-host rate limiting. A host has either a fixed interval between
+    requests, or a sliding window ("at most N requests in any S seconds"), which
+    lets a single search go out immediately and only paces long batches."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._next_ok: dict[str, float] = {}
         self._intervals: dict[str, float] = {}
+        self._windows: dict[str, tuple[int, float]] = {}
+        self._history: dict[str, collections.deque] = {}
 
     def set_interval(self, host: str, seconds: float) -> None:
         self._intervals[host] = seconds
 
+    def set_window(self, host: str, count: int, seconds: float) -> None:
+        self._windows[host] = (count, seconds)
+        self._history[host] = collections.deque()
+
+    def _reserve(self, host: str) -> float:
+        """Book the next slot for host and return how long to sleep before using it."""
+        now = time.monotonic()
+        start = max(now, self._next_ok.get(host, 0.0))  # a 429 penalty pushes everything out
+        if host in self._windows:
+            count, seconds = self._windows[host]
+            hist = self._history[host]
+            while hist and hist[0] <= start - seconds:
+                hist.popleft()
+            if len(hist) >= count:
+                start = max(start, hist[0] + seconds)
+            hist.append(start)
+        else:
+            start += 0.0
+            self._next_ok[host] = start + self._intervals.get(host, 0.0)
+        return start - now
+
     def wait(self, host: str, cancel: threading.Event | None = None) -> None:
         with self._lock:
-            now = time.monotonic()
-            due = self._next_ok.get(host, 0.0)
-            delay = max(0.0, due - now)
-            self._next_ok[host] = max(now, due) + self._intervals.get(host, 0.0)
+            delay = self._reserve(host)
         while delay > 0:
             if cancel is not None and cancel.is_set():
                 return
@@ -62,17 +85,21 @@ class _Throttle:
             delay -= step
 
     def slow_down(self, host: str, seconds: float) -> None:
-        """After a 429, push the next allowed time out and widen the interval a bit."""
+        """After a 429, hold the host for `seconds` and pace it more conservatively."""
         with self._lock:
             self._next_ok[host] = max(self._next_ok.get(host, 0.0), time.monotonic() + seconds)
-            self._intervals[host] = min(10.0, self._intervals.get(host, 0.0) * 1.5 + 0.5)
+            if host in self._windows:
+                count, span = self._windows[host]
+                self._windows[host] = (max(1, count - count // 4), span)
+            else:
+                self._intervals[host] = min(10.0, self._intervals.get(host, 0.0) * 1.5 + 0.5)
 
 
 throttle = _Throttle()
-throttle.set_interval("itunes.apple.com", 3.1)  # ~20 requests per minute
+throttle.set_window("itunes.apple.com", 20, 60.0)  # Apple: about 20 requests per minute
 throttle.set_interval("musicbrainz.org", 1.05)  # 1 request per second
 throttle.set_interval("api.acoustid.org", 0.35)  # 3 requests per second
-throttle.set_interval("coverartarchive.org", 0.5)
+# coverartarchive.org has no published limit; thumbnails are fetched in parallel
 
 _session: requests.Session | None = None
 _session_lock = threading.Lock()

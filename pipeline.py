@@ -6,6 +6,7 @@ for a single source failing; they return what they got plus an error list.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import dataclasses
 import os
 import threading
@@ -99,18 +100,28 @@ def search_text(query: str, country: str, file_length: float | None, *, on_wait:
     artist, title = match.split_query(query)
     cands: list[Candidate] = []
     errors: list[str] = []
-    for fn in (
-        lambda: search_itunes.search(query, country, on_wait=on_wait, cancel=cancel),
-        lambda: search_mb.search(title, artist, query, on_wait=on_wait, cancel=cancel),
-    ):
+
+    def guarded(fn) -> tuple[list[Candidate], str | None]:
         if cancel is not None and cancel.is_set():
-            break
+            return [], None
         try:
-            cands.extend(fn())
+            return fn(), None
         except net.RateLimited:
-            errors.append(ERR_RATE_LIMIT)
+            return [], ERR_RATE_LIMIT
         except net.NetworkError:
-            errors.append(ERR_NETWORK)
+            return [], ERR_NETWORK
+
+    # the two sources have separate rate limits, so ask them at the same time
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [
+            pool.submit(guarded, lambda: search_itunes.search(query, country, on_wait=on_wait, cancel=cancel)),
+            pool.submit(guarded, lambda: search_mb.search(title, artist, query, on_wait=on_wait, cancel=cancel)),
+        ]
+        for fut in futures:
+            found, err = fut.result()
+            cands.extend(found)
+            if err:
+                errors.append(err)
     if not title and not artist:
         title = query
     ranked = match.rank(cands, title, artist, file_length)
