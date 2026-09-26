@@ -39,6 +39,7 @@ class Candidate:
     itunes_id: str | None = None
     mb_recording_id: str | None = None
     mb_release_id: str | None = None
+    mb_release_group_id: str | None = None
     acoustid_score: float | None = None  # 0..1 from the fingerprint service
     score: int = 0
 
@@ -222,7 +223,7 @@ def merge(cands: list[Candidate]) -> list[Candidate]:
 
 def _fill(target: Candidate, extra: Candidate) -> None:
     for name in ("album", "album_artist", "year", "track", "genre", "cover_url", "thumb_url",
-                 "itunes_id", "mb_recording_id", "mb_release_id", "length"):
+                 "itunes_id", "mb_recording_id", "mb_release_id", "mb_release_group_id", "length"):
         if not getattr(target, name) and getattr(extra, name):
             setattr(target, name, getattr(extra, name))
     if extra.acoustid_score is not None and (target.acoustid_score is None or extra.acoustid_score > target.acoustid_score):

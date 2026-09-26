@@ -54,6 +54,37 @@ def search(term: str, country: str = "US", limit: int = 20, *, on_wait=None,
     return out
 
 
+def album_artwork(album: str, artist: str, country: str = "US", *, on_wait=None,
+                  cancel: threading.Event | None = None) -> str | None:
+    """Large artwork URL for an album found by name (+ artist), or None. Used when a
+    MusicBrainz candidate has no Cover Art Archive image but the album is on iTunes."""
+    from match import similarity
+
+    album = (album or "").strip()
+    if not album:
+        return None
+    countries = list(dict.fromkeys(c for c in (country, FALLBACK_COUNTRY) if c not in EMPTY_STOREFRONTS)) or [FALLBACK_COUNTRY]
+    for c in countries:
+        if cancel is not None and cancel.is_set():
+            return None
+        params = {"term": f"{artist} {album}".strip(), "country": c, "media": "music", "entity": "album", "limit": 10}
+        data = net.get_json(SEARCH_URL, params, on_wait=on_wait, cancel=cancel)
+        best, best_sim = None, 0.0
+        for item in data.get("results") or []:
+            if not isinstance(item, dict) or not item.get("artworkUrl100"):
+                continue
+            sim = similarity(str(item.get("collectionName") or ""), album)
+            if artist and similarity(str(item.get("artistName") or ""), artist) < 0.3:
+                sim *= 0.8
+            if sim > best_sim:
+                best, best_sim = item, sim
+        if best is not None and best_sim >= 0.6:
+            return artwork(best.get("artworkUrl100"), 1000)
+        if data.get("results"):
+            break  # the storefront answered; a different store will not change the match
+    return None
+
+
 def _note_empty(country: str) -> None:
     """Three empty answers in a row and the storefront is skipped for this session."""
     _empty_hits[country] = _empty_hits.get(country, 0) + 1

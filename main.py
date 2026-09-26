@@ -181,7 +181,7 @@ def run_cli(args: argparse.Namespace) -> int:
         # a hand-picked candidate replaces the fields; --auto only fills gaps unless --overwrite
         overwrite = args.overwrite or not args.auto
         new_tags = pipeline.apply_candidate(info.tags, chosen, overwrite)
-        cover = pipeline.fetch_cover(chosen, on_wait=_on_wait) if (overwrite or info.cover is None) else None
+        cover = pipeline.fetch_cover(chosen, country, on_wait=_on_wait) if (overwrite or info.cover is None) else None
         if new_tags == info.tags and cover is None:
             print(t("msg_nothing_to_save"))
             continue

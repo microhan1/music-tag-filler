@@ -727,7 +727,7 @@ class App:
                     s.selected, s.auto = pick, True
                     self._apply_values(s, pick, overwrite=False)
                     if not s.has_cover:
-                        cover = pipeline.fetch_cover(pick, on_wait=self._on_wait, cancel=self.cancel_event)
+                        cover = pipeline.fetch_cover(pick, self.var_country.get(), on_wait=self._on_wait, cancel=self.cancel_event)
                         if cover:
                             s.cover_key, s.cover_changed = self.covers.put(cover), True
             self._ui(self._after_file_loaded, s)
@@ -986,7 +986,7 @@ class App:
             self._run(self._fetch_cover_job, s, cand)
 
     def _fetch_cover_job(self, s: FileState, cand: Candidate) -> None:
-        data = pipeline.fetch_cover(cand, on_wait=self._on_wait, cancel=self.cancel_event)
+        data = pipeline.fetch_cover(cand, self.var_country.get(), on_wait=self._on_wait, cancel=self.cancel_event)
         if data:
             s.cover_key, s.cover_changed = self.covers.put(data), True
             if s is self.current:

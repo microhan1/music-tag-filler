@@ -14,6 +14,7 @@ from match import SOURCE_MB, Candidate
 SEARCH_URL = "https://musicbrainz.org/ws/2/recording"
 LOOKUP_URL = "https://musicbrainz.org/ws/2/recording/{id}"
 CAA_RELEASE = "https://coverartarchive.org/release/{id}/front-{size}"
+CAA_RELEASE_GROUP = "https://coverartarchive.org/release-group/{id}/front-{size}"
 
 _LUCENE_SPECIAL = re.compile(r'([+\-!(){}\[\]^"~*?:\\/]|&&|\|\|)')
 
@@ -54,7 +55,7 @@ def search(title: str, artist: str, free_text: str = "", limit: int = 20, *, on_
 def lookup(recording_id: str, *, on_wait=None, cancel: threading.Event | None = None) -> Candidate | None:
     """Full recording by MBID, used after an AcoustID hit that lacks release data."""
     data = net.get_json(LOOKUP_URL.format(id=recording_id),
-                        {"fmt": "json", "inc": "artist-credits+releases+media+genres"}, on_wait=on_wait, cancel=cancel)
+                        {"fmt": "json", "inc": "artist-credits+releases+release-groups+media+genres"}, on_wait=on_wait, cancel=cancel)
     return candidate_from_recording(data) if data.get("id") else None
 
 
@@ -107,6 +108,7 @@ def candidate_from_recording(rec: dict) -> Candidate:
     album = ""
     album_artist = ""
     release_id = None
+    release_group_id = None
     track = ""
     if release:
         album = str(release.get("title") or "")
@@ -114,6 +116,7 @@ def candidate_from_recording(rec: dict) -> Candidate:
         year = date[:4] if len(date) >= 4 and date[:4].isdigit() else ""
         album_artist = artist_credit(release.get("artist-credit"))
         release_id = str(release.get("id") or "") or None
+        release_group_id = str((release.get("release-group") or {}).get("id") or "") or None
         track = _track_number(release)
     if not year:
         first = str(rec.get("first-release-date") or "")
@@ -133,4 +136,5 @@ def candidate_from_recording(rec: dict) -> Candidate:
         thumb_url=CAA_RELEASE.format(id=release_id, size=250) if release_id else None,
         mb_recording_id=str(rec.get("id") or "") or None,
         mb_release_id=release_id,
+        mb_release_group_id=release_group_id,
     )

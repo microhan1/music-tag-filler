@@ -177,16 +177,32 @@ def search_sound(path: str, prefs: Prefs, query: str = "", file_length: float | 
     return SearchResult(ranked, [], title, artist)
 
 
-def fetch_cover(cand: Candidate, *, on_wait: WaitCallback | None = None,
+def fetch_cover(cand: Candidate, country: str = "US", *, on_wait: WaitCallback | None = None,
                 cancel: threading.Event | None = None) -> bytes | None:
-    """Full-size cover for a candidate, or None."""
-    if not cand.cover_url:
-        return None
-    try:
-        data = net.get_bytes(cand.cover_url, on_wait=on_wait, cancel=cancel)
-    except (net.NetworkError, net.RateLimited):
-        return None
-    return data or None
+    """Full-size cover for a candidate, or None. Tries the candidate's own image,
+    then the Cover Art Archive release group, then the album on iTunes: many
+    MusicBrainz releases carry no art although the album is on iTunes."""
+    urls = [cand.cover_url]
+    if cand.mb_release_group_id:
+        urls.append(search_mb.CAA_RELEASE_GROUP.format(id=cand.mb_release_group_id, size=500))
+    for url in urls:
+        if not url or (cancel is not None and cancel.is_set()):
+            continue
+        try:
+            data = net.get_bytes(url, on_wait=on_wait, cancel=cancel)
+        except (net.NetworkError, net.RateLimited):
+            data = None
+        if data:
+            return data
+    if cand.album and (cancel is None or not cancel.is_set()):
+        try:
+            url = search_itunes.album_artwork(cand.album, cand.album_artist or cand.artist, country,
+                                              on_wait=on_wait, cancel=cancel)
+            if url:
+                return net.get_bytes(url, on_wait=on_wait, cancel=cancel) or None
+        except (net.NetworkError, net.RateLimited):
+            return None
+    return None
 
 
 def fetch_thumb(cand: Candidate, *, cancel: threading.Event | None = None) -> bytes | None:

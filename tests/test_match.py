@@ -148,3 +148,26 @@ def test_base_title_drops_version_suffix_only():
     assert match.base_title("Good Day (Japanese Version)") == "Good Day"
     assert match.base_title("Good Day (feat. X)") == "Good Day (feat. X)"
     assert match.base_title("(Karaoke)") == "(Karaoke)"
+
+
+def test_mb_parsing_keeps_release_group_id():
+    rec = {"id": "rid", "title": "T", "artist-credit": [{"name": "A"}],
+           "releases": [{"id": "rel", "title": "Album", "status": "Official", "date": "2002-01-01",
+                         "release-group": {"id": "rg", "primary-type": "Album"}}]}
+    c = search_mb.candidate_from_recording(rec)
+    assert c.mb_release_id == "rel" and c.mb_release_group_id == "rg"
+
+
+def test_itunes_album_artwork_picks_matching_album(monkeypatch):
+    import net
+
+    def fake_get_json(url, params=None, **kwargs):
+        assert params["entity"] == "album"
+        return {"results": [
+            {"collectionName": "Other Album", "artistName": "A", "artworkUrl100": "https://x/other/100x100bb.jpg"},
+            {"collectionName": "Character CD Vol.3", "artistName": "A", "artworkUrl100": "https://x/v3/100x100bb.jpg"},
+        ]}
+
+    monkeypatch.setattr(net, "get_json", fake_get_json)
+    assert search_itunes.album_artwork("Character CD Vol.3", "A", "JP") == "https://x/v3/1000x1000bb.jpg"
+    assert search_itunes.album_artwork("Completely Different", "A", "JP") is None
