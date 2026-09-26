@@ -153,18 +153,26 @@ def search_sound(path: str, prefs: Prefs, query: str = "", file_length: float | 
     except net.NetworkError as exc:
         log_error("acoustid network", exc)
         return SearchResult([], [ERR_NETWORK], title, artist)
-    # AcoustID sometimes returns recordings without release data; fill the
-    # first few from MusicBrainz so the album and year are usable.
+    # AcoustID lists releases in no useful order and includes translated
+    # pseudo-releases, so its album name can come out as an English rendering of
+    # a Japanese title. Re-read the top hits from MusicBrainz, which picks the
+    # earliest official release, so sound and text searches name albums alike.
     for cand in cands[:3]:
-        if cand.mb_recording_id and not cand.album:
-            if cancel is not None and cancel.is_set():
-                break
-            try:
-                full = search_mb.lookup(cand.mb_recording_id, on_wait=on_wait, cancel=cancel)
-            except net.NetworkError:
-                continue
-            if full is not None:
-                match._fill(cand, full)
+        if not cand.mb_recording_id:
+            continue
+        if cancel is not None and cancel.is_set():
+            break
+        try:
+            full = search_mb.lookup(cand.mb_recording_id, on_wait=on_wait, cancel=cancel)
+        except (net.NetworkError, net.RateLimited):
+            continue
+        if full is None:
+            continue
+        for name in ("title", "artist", "album", "album_artist", "year", "track", "genre",
+                     "cover_url", "thumb_url", "mb_release_id", "length"):
+            value = getattr(full, name)
+            if value:
+                setattr(cand, name, value)
     ranked = match.rank(cands, title, artist, file_length or duration)
     return SearchResult(ranked, [], title, artist)
 
