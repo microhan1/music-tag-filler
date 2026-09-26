@@ -60,12 +60,37 @@ class Candidate:
 # ------------------------------------------------------------------ text
 _STRIP_RE = re.compile(r"[\s\-_\.\,\!\?\'\"\(\)\[\]\{\}\:;/\\&+*~`^|<>=@#$%]+")
 _FEAT_RE = re.compile(r"\s*[\(\[]?(feat\.?|ft\.?|featuring)\s+[^\)\]]*[\)\]]?", re.IGNORECASE)
+# "Karaoke", "off vocal", "Instrumental", "inst." all name the same kind of track;
+# fold them to one token so a karaoke file matches the "(off vocal)" recording
+_INST_RE = re.compile(r"\b(karaoke|off[\s\-]?vocal|instrumental|inst\.?|backing track|minus one)\b", re.IGNORECASE)
+# a trailing " - Karaoke" / " - TV size" in a file name is a version, not the title
+_VERSION_WORDS = re.compile(
+    r"^(karaoke|off[\s\-]?vocal|instrumental|inst\.?|tv[\s\-]?size|tv ver\.?|remix|live|acoustic|demo|"
+    r"short ver\.?|full ver\.?|ver\.?\s*\d*|version|mix|edit|radio edit|extended|remaster(ed)?|"
+    r"(english|japanese|korean|chinese)\s+ver(\.|sion)?)$", re.IGNORECASE)
 
 
 def normalize(text: str) -> str:
     text = unicodedata.normalize("NFKC", text or "").casefold()
     text = _FEAT_RE.sub("", text)
+    text = _INST_RE.sub("inst", text)
     return _STRIP_RE.sub("", text)
+
+
+def is_version_word(text: str) -> bool:
+    return bool(_VERSION_WORDS.match((text or "").strip()))
+
+
+_TRAILING_PAREN_RE = re.compile(r"\s*[\(\[]([^\(\)\[\]]+)[\)\]]\s*$")
+
+
+def base_title(title: str) -> str:
+    """'Time Pavement (Karaoke)' -> 'Time Pavement': the name to search by; the
+    version in parentheses is left to the ranking, which prefers the matching one."""
+    m = _TRAILING_PAREN_RE.search(title or "")
+    if m and is_version_word(m.group(1)):
+        return title[:m.start()].strip() or title
+    return title
 
 
 def similarity(a: str, b: str) -> float:
@@ -94,6 +119,8 @@ def guess_from_filename(path: str) -> tuple[str, str]:
         if sep in stem:
             left, right = stem.split(sep, 1)
             left, right = left.strip(), right.strip()
+            if left and right and is_version_word(right):
+                return "", f"{left} ({right})"  # "Time Pavement - Karaoke" is one title
             if left and right:
                 return left, right
     return "", stem
@@ -125,7 +152,10 @@ def split_query(query: str) -> tuple[str, str]:
     for sep in (" - ", " \u2013 ", " \u2014 "):
         if sep in query:
             a, b = query.split(sep, 1)
-            return a.strip(), b.strip()
+            a, b = a.strip(), b.strip()
+            if is_version_word(b):
+                return "", f"{a} ({b})"
+            return a, b
     return "", query
 
 

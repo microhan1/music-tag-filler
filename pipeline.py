@@ -115,7 +115,7 @@ def search_text(query: str, country: str, file_length: float | None, *, on_wait:
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         futures = [
             pool.submit(guarded, lambda: search_itunes.search(query, country, on_wait=on_wait, cancel=cancel)),
-            pool.submit(guarded, lambda: search_mb.search(title, artist, query, on_wait=on_wait, cancel=cancel)),
+            pool.submit(guarded, lambda: search_mb.search(match.base_title(title), artist, query, on_wait=on_wait, cancel=cancel)),
         ]
         for fut in futures:
             found, err = fut.result()

@@ -127,3 +127,24 @@ def test_apply_candidate_fill_gaps_vs_overwrite():
     assert (filled.album, filled.year, filled.track, filled.genre) == ("Best Album", "2026", "3/24", "Pop")
     over = pipeline.apply_candidate(cur, cand, overwrite=True)
     assert (over.album, over.year, over.track) == ("Orig Album", "2017", "1")
+
+
+def test_version_suffix_is_part_of_the_title():
+    assert match.guess_from_filename("04. Time Pavement  - Karaoke.flac") == ("", "Time Pavement (Karaoke)")
+    assert match.guess_from_filename("03. Shikkari! Try La Lai - Karaoke.flac") == ("", "Shikkari! Try La Lai (Karaoke)")
+    assert match.guess_from_filename("01 - Ado - Odo.mp3") == ("Ado", "Odo")
+    assert match.split_query("Time Pavement - TV size") == ("", "Time Pavement (TV size)")
+    assert match.split_query("Ado - Odo") == ("Ado", "Odo")
+
+
+def test_karaoke_and_off_vocal_compare_equal():
+    assert match.normalize("Time Pavement (Karaoke)") == match.normalize("Time Pavement (off vocal)")
+    assert match.similarity("Time Pavement (Karaoke)", "Time Pavement (off vocal)") == 1.0
+    assert match.similarity("Time Pavement (Karaoke)", "Time Pavement") < 1.0
+
+
+def test_base_title_drops_version_suffix_only():
+    assert match.base_title("Time Pavement (Karaoke)") == "Time Pavement"
+    assert match.base_title("Good Day (Japanese Version)") == "Good Day"
+    assert match.base_title("Good Day (feat. X)") == "Good Day (feat. X)"
+    assert match.base_title("(Karaoke)") == "(Karaoke)"
