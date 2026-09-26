@@ -198,10 +198,13 @@ class App:
         self.current: FileState | None = None
         self.cancel_event = threading.Event()
         self.worker: threading.Thread | None = None
-        self.thumb_thread: threading.Thread | None = None
-        self.thumb_gen = 0
+        # Thumbnails: each URL is fetched once by a persistent pool and cached; a
+        # refill of the table only attaches cached images and queues the missing ones.
+        self._thumb_pool = concurrent.futures.ThreadPoolExecutor(max_workers=6)
         self._thumbs: dict[str, ImageTk.PhotoImage] = {}
         self._thumb_misses: set[str] = set()  # URLs that returned nothing; not asked again
+        self._thumb_inflight: set[str] = set()
+        self._thumb_rows: dict[str, str] = {}  # url -> row id in the table shown now
         self.covers = CoverStore()
         self._cover_photo: ImageTk.PhotoImage | None = None
         self._placeholder = ImageTk.PhotoImage(self._placeholder_image())
@@ -645,6 +648,7 @@ class App:
         self._set_loading(False)
         self._thumbs.clear()
         self._thumb_misses.clear()
+        self._thumb_rows = {}
         self.covers.close()
         self._show_file(None)
         self._refresh_list()
@@ -828,7 +832,7 @@ class App:
     # ------------------------------------------------------------ candidates table
     def _fill_tree(self, cands: list[Candidate]) -> None:
         self.tree.delete(*self.tree.get_children())
-        self.thumb_gen += 1
+        self._thumb_rows = {}
         for i, c in enumerate(cands):
             img = self._thumbs.get(c.thumb_url or "")
             row_tags = ["odd"] if i % 2 else []
@@ -839,38 +843,42 @@ class App:
             self.tree.insert("", "end", iid=str(i), image=img if img else "",
                              values=(c.title, c.artist, c.album, c.year, c.source_label(), c.score),
                              tags=tuple(row_tags))
+            if c.thumb_url and c.thumb_url not in self._thumb_rows:
+                self._thumb_rows[c.thumb_url] = str(i)
         if cands:
             self.tree.selection_set("0")
             self.tree.focus("0")
-            self._start_thumbs(cands, self.thumb_gen)
+            self._queue_thumbs(cands)
 
-    def _start_thumbs(self, cands: list[Candidate], gen: int) -> None:
-        todo = [(i, c) for i, c in enumerate(cands)
-                if c.thumb_url and c.thumb_url not in self._thumbs and c.thumb_url not in self._thumb_misses]
-        if not todo:
+    def _queue_thumbs(self, cands: list[Candidate]) -> None:
+        todo = []
+        seen: set[str] = set()
+        for c in cands:
+            url = c.thumb_url
+            if not url or url in seen or url in self._thumbs or url in self._thumb_misses or url in self._thumb_inflight:
+                continue
+            seen.add(url)
+            todo.append(c)
+        # iTunes art comes from a fast CDN; Cover Art Archive answers through a slow
+        # redirect, so the quick ones go first and fill most of the table at once
+        todo.sort(key=lambda c: 0 if "mzstatic" in (c.thumb_url or "") else 1)
+        for c in todo:
+            self._thumb_inflight.add(c.thumb_url)
+            self._thumb_pool.submit(self._fetch_thumb, c)
+
+    def _fetch_thumb(self, c: Candidate) -> None:
+        if self._closing:
             return
+        data = pipeline.fetch_thumb(c)
+        self._ui(self._thumb_done, c.thumb_url, data)
 
-        def fetch(i: int, c: Candidate) -> None:
-            if gen != self.thumb_gen or self._closing:
-                return
-            data = pipeline.fetch_thumb(c, cancel=self.cancel_event)
-            if data:
-                self._ui(self._set_thumb, gen, str(i), c.thumb_url, data)
-            else:
-                if len(self._thumb_misses) > 5000:
-                    self._thumb_misses.clear()
-                self._thumb_misses.add(c.thumb_url)
-
-        def work() -> None:
-            # top rows first, four at a time: Cover Art Archive answers via a slow redirect
-            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-                for i, c in todo:
-                    pool.submit(fetch, i, c)
-
-        self.thumb_thread = threading.Thread(target=work, daemon=True)
-        self.thumb_thread.start()
-
-    def _set_thumb(self, gen: int, iid: str, url: str, data: bytes) -> None:
+    def _thumb_done(self, url: str, data: bytes | None) -> None:
+        self._thumb_inflight.discard(url)
+        if not data:
+            if len(self._thumb_misses) > 5000:
+                self._thumb_misses.clear()
+            self._thumb_misses.add(url)
+            return
         try:
             with Image.open(io.BytesIO(data)) as im:
                 im = im.convert("RGB")
@@ -878,12 +886,14 @@ class App:
                 im.thumbnail((size, size), Image.LANCZOS)
                 photo = ImageTk.PhotoImage(im)
         except Exception:
+            self._thumb_misses.add(url)
             return
         self._thumbs[url] = photo
         if len(self._thumbs) > 400:
             for key in list(self._thumbs)[:100]:
                 del self._thumbs[key]
-        if gen == self.thumb_gen and self.tree.exists(iid):
+        iid = self._thumb_rows.get(url)
+        if iid is not None and self.tree.exists(iid):
             self.tree.item(iid, image=photo)
 
     def _selected_candidate(self) -> Candidate | None:
@@ -1107,6 +1117,7 @@ class App:
         if self._busy():
             self.root.after(100, self._close_when_idle)
             return
+        self._thumb_pool.shutdown(wait=False, cancel_futures=True)
         self.covers.close()
         self.root.destroy()
 
