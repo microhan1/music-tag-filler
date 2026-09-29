@@ -26,6 +26,12 @@ python main.py
 
 With several files, each one is searched and the first candidate scoring 90 or more is pre-selected (grey check). Step through the list, then press **Save all**. For files with no usable name such as `track01.mp3`, press **Find by sound**.
 
+**Batch cover**: with several files loaded (an album folder, say), a **Use this cover for all** button appears under the cover preview.
+
+1. Select a file that has a cover. A cover you applied from a candidate, picked with **Pick cover image**, or dropped onto the cover area counts too.
+2. Press **Use this cover for all** and confirm; every other file in the list gets the same cover.
+3. Press **Save all** to write it to the files. Undo still works file by file.
+
 ```bash
 python main.py song.mp3                      # lists numbered candidates and asks
 python main.py music_folder --auto --rename  # saves without asking at match >= 90, renames too
