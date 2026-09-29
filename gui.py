@@ -25,6 +25,7 @@ import tags
 from i18n import t
 import match
 from match import Candidate
+import search_itunes
 from search_itunes import COUNTRIES
 
 try:
@@ -36,6 +37,8 @@ except Exception:  # pragma: no cover - optional dependency
 
 COVER_PX = 240
 THUMB_PX = 40
+PREVIEW_PX = 320  # hover preview of a candidate's cover
+PREVIEW_DELAY_MS = 250
 TOP_PANE_PX = 372
 IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif")
 CHECK = "\u2713"
@@ -205,6 +208,14 @@ class App:
         self._thumb_misses: set[str] = set()  # URLs that returned nothing; not asked again
         self._thumb_inflight: set[str] = set()
         self._thumb_rows: dict[str, str] = {}  # url -> row id in the table shown now
+        # hover preview: a borderless window beside the cursor with a larger cover
+        self._preview_win: tk.Toplevel | None = None
+        self._preview_lbl: tk.Label | None = None
+        self._preview_cache: dict[str, ImageTk.PhotoImage] = {}
+        self._preview_misses: set[str] = set()
+        self._preview_url: str | None = None
+        self._preview_job: str | None = None
+        self._preview_pos = (0, 0)
         self.covers = CoverStore()
         self._cover_photo: ImageTk.PhotoImage | None = None
         self._placeholder = ImageTk.PhotoImage(self._placeholder_image())
@@ -433,6 +444,9 @@ class App:
         self.tree.configure(yscrollcommand=tsb.set)
         self.tree.bind("<Double-1>", lambda _e: self.apply_selected())
         self.tree.bind("<Return>", lambda _e: self.apply_selected())
+        self.tree.bind("<Motion>", self._on_tree_motion)
+        self.tree.bind("<Leave>", lambda _e: self._hide_preview())
+        self.tree.bind("<MouseWheel>", lambda _e: self._hide_preview(), add="+")
         self.tree.tag_configure("odd", background=STRIPE)
         self.tree.tag_configure("good", foreground=GOOD_FG)
         self.tree.tag_configure("fair", foreground=FAIR_FG)
@@ -649,6 +663,8 @@ class App:
         self._thumbs.clear()
         self._thumb_misses.clear()
         self._thumb_rows = {}
+        self._preview_cache.clear()
+        self._preview_misses.clear()
         self.covers.close()
         self._show_file(None)
         self._refresh_list()
@@ -831,6 +847,7 @@ class App:
 
     # ------------------------------------------------------------ candidates table
     def _fill_tree(self, cands: list[Candidate]) -> None:
+        self._hide_preview()
         self.tree.delete(*self.tree.get_children())
         self._thumb_rows = {}
         for i, c in enumerate(cands):
@@ -895,6 +912,127 @@ class App:
         iid = self._thumb_rows.get(url)
         if iid is not None and self.tree.exists(iid):
             self.tree.item(iid, image=photo)
+
+    # ------------------------------------------------------------ hover preview
+    @staticmethod
+    def _preview_url_for(c: Candidate) -> str | None:
+        """A mid-size image: iTunes serves any size from the same path; Cover Art
+        Archive's front-500 is the candidate's cover URL."""
+        if c.thumb_url and "mzstatic" in c.thumb_url:
+            return search_itunes.artwork(c.thumb_url, 600)
+        return c.cover_url or c.thumb_url
+
+    def _on_tree_motion(self, event) -> None:
+        row = self.tree.identify_row(event.y)
+        col = self.tree.identify_column(event.x)
+        cand = None
+        if row and col == "#0" and self.current is not None:
+            try:
+                cand = self.current.candidates[int(row)]
+            except (ValueError, IndexError):
+                cand = None
+        url = self._preview_url_for(cand) if cand is not None else None
+        if not url or url in self._preview_misses:
+            self._hide_preview()
+            return
+        self._preview_pos = (event.x_root, event.y_root)
+        if url == self._preview_url:
+            if self._preview_win is not None and self._preview_win.winfo_viewable():
+                self._place_preview()
+            return
+        self._hide_preview()
+        self._preview_url = url
+        self._preview_job = self.root.after(PREVIEW_DELAY_MS, self._show_preview)
+
+    def _ensure_preview_win(self) -> None:
+        if self._preview_win is not None:
+            return
+        win = tk.Toplevel(self.root)
+        win.withdraw()
+        win.overrideredirect(True)
+        try:
+            win.attributes("-topmost", True)
+        except tk.TclError:
+            pass
+        win.configure(bg=BORDER)
+        self._preview_lbl = tk.Label(win, bg=CARD, fg=MUTED, font=self.font_body, bd=0,
+                                     padx=self.px(6), pady=self.px(6))
+        self._preview_lbl.pack(padx=1, pady=1)
+        self._preview_win = win
+
+    def _place_preview(self) -> None:
+        win = self._preview_win
+        if win is None:
+            return
+        win.update_idletasks()
+        w, h = win.winfo_reqwidth(), win.winfo_reqheight()
+        x, y = self._preview_pos[0] + self.px(24), self._preview_pos[1] - h // 2
+        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        if x + w > sw:
+            x = self._preview_pos[0] - self.px(24) - w  # flip to the left of the cursor
+        y = max(0, min(y, sh - h))
+        win.geometry(f"+{x}+{y}")
+
+    def _show_preview(self) -> None:
+        self._preview_job = None
+        url = self._preview_url
+        if not url or self._closing:
+            return
+        self._ensure_preview_win()
+        photo = self._preview_cache.get(url)
+        if photo is not None:
+            self._preview_lbl.configure(image=photo, text="")
+        else:
+            self._preview_lbl.configure(image="", text=t("msg_loading") + " ...",
+                                        width=self.px(PREVIEW_PX) // 8, height=self.px(PREVIEW_PX) // 20)
+            self._thumb_pool.submit(self._fetch_preview, url)
+        self._place_preview()
+        self._preview_win.deiconify()
+        self._preview_win.lift()
+
+    def _fetch_preview(self, url: str) -> None:
+        if self._closing:
+            return
+        try:
+            data = net.get_bytes(url, max_bytes=5 * 1024 * 1024)
+        except (net.NetworkError, net.RateLimited):
+            data = None
+        self._ui(self._preview_done, url, data)
+
+    def _preview_done(self, url: str, data: bytes | None) -> None:
+        photo = None
+        if data:
+            try:
+                with Image.open(io.BytesIO(data)) as im:
+                    im = im.convert("RGB")
+                    size = self.px(PREVIEW_PX)
+                    im.thumbnail((size, size), Image.LANCZOS)
+                    photo = ImageTk.PhotoImage(im)
+            except Exception:
+                photo = None
+        if photo is None:
+            self._preview_misses.add(url)
+            if url == self._preview_url:
+                self._hide_preview()
+            return
+        self._preview_cache[url] = photo
+        if len(self._preview_cache) > 40:  # a few MB at most
+            for key in list(self._preview_cache)[:10]:
+                del self._preview_cache[key]
+        if url == self._preview_url and self._preview_win is not None and self._preview_win.winfo_viewable():
+            self._preview_lbl.configure(image=photo, text="", width=0, height=0)
+            self._place_preview()
+
+    def _hide_preview(self) -> None:
+        if self._preview_job is not None:
+            try:
+                self.root.after_cancel(self._preview_job)
+            except tk.TclError:
+                pass
+            self._preview_job = None
+        self._preview_url = None
+        if self._preview_win is not None:
+            self._preview_win.withdraw()
 
     def _selected_candidate(self) -> Candidate | None:
         sel = self.tree.selection()
