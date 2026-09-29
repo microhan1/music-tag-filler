@@ -395,6 +395,8 @@ class App:
         self.lbl_cover.pack()
         self.btn_cover = self._reg(ttk.Button(cov, command=self._cover_dialog), "btn_cover_file")
         self.btn_cover.pack(fill="x", pady=(p(8), 0))
+        # shown only when the list holds several files (see _refresh_list)
+        self.btn_cover_all = self._reg(ttk.Button(cov, command=self.apply_cover_to_all), "btn_cover_all")
 
         # fields
         fields = ttk.Frame(top)
@@ -546,7 +548,7 @@ class App:
     def _set_busy(self, busy: bool) -> None:
         state = "disabled" if busy else "normal"
         for w in (self.btn_search, self.btn_fp, self.btn_apply, self.btn_save, self.btn_save_all, self.btn_undo,
-                  self.btn_add, self.btn_add_dir, self.btn_clear, self.btn_cover):
+                  self.btn_add, self.btn_add_dir, self.btn_clear, self.btn_cover, self.btn_cover_all):
             w.configure(state=state)
         self.cmb_lang.configure(state="disabled" if busy else "readonly")
         self.cmb_country.configure(state="disabled" if busy else "readonly")
@@ -675,6 +677,10 @@ class App:
             self.frm_files.grid()
         else:
             self.frm_files.grid_remove()
+        if show and not self.btn_cover_all.winfo_ismapped():
+            self.btn_cover_all.pack(fill="x", pady=(self.px(6), 0), after=self.btn_cover)
+        elif not show and self.btn_cover_all.winfo_manager():
+            self.btn_cover_all.pack_forget()
         # Update rows in place: deleting and re-inserting every row on each refresh
         # made the list jump and flicker whenever a file was clicked or a field edited.
         lst = self.lst_files
@@ -818,6 +824,31 @@ class App:
             except Exception:
                 self._cover_photo = None
         self.lbl_cover.configure(image=self._cover_photo if self._cover_photo is not None else self._placeholder)
+
+    def apply_cover_to_all(self) -> None:
+        """Give every file in the list the cover shown now (an album folder usually
+        shares one). Nothing is written until Save / Save all."""
+        s = self.current
+        if s is None:
+            self._set_status("msg_no_files")
+            return
+        data = s.load_cover()
+        if not data:
+            self._set_status("msg_no_cover")
+            return
+        targets = [f for f in self.files if f.info is not None and f is not s]
+        if not targets:
+            return
+        if not messagebox.askyesno(t("dlg_confirm"), t("warn_cover_all", count=len(targets)), parent=self.root):
+            return
+        # one copy on disk shared by every file, not one per file
+        key = s.cover_key if s.cover_changed else self.covers.put(data)
+        for f in targets:
+            f.cover_key, f.cover_changed, f.saved = key, True, False
+            if f.auto:
+                f.confirmed = True
+        self._refresh_list()
+        self._set_status("msg_cover_applied", count=len(targets))
 
     def _cover_dialog(self) -> None:
         if self.current is None:
