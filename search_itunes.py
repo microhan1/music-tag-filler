@@ -109,4 +109,5 @@ def _candidate(item: dict) -> Candidate:
         cover_url=artwork(item.get("artworkUrl100"), 1000),
         thumb_url=artwork(item.get("artworkUrl100"), 100),
         itunes_id=str(item.get("trackId") or "") or None,
+        itunes_artist_id=str(item.get("artistId") or "") or None,
     )

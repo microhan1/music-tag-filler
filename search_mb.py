@@ -69,6 +69,56 @@ def artist_credit(credits: list | None) -> str:
     return "".join(parts).strip()
 
 
+def credit_ids(credits: list | None) -> list[str]:
+    out = []
+    for c in credits or []:
+        aid = str(((c or {}).get("artist") or {}).get("id") or "") if isinstance(c, dict) else ""
+        if aid and aid not in out:
+            out.append(aid)
+    return out
+
+
+def credit_sort(credits: list | None) -> str:
+    """Sort names joined the way the credit is: 'Ado with Hatsune, Miku'."""
+    parts: list[str] = []
+    found = False
+    for c in credits or []:
+        if isinstance(c, dict):
+            artist = c.get("artist") or {}
+            sort = str(artist.get("sort-name") or "")
+            found = found or bool(sort)
+            parts.append(sort or str(c.get("name") or artist.get("name") or ""))
+            parts.append(str(c.get("joinphrase") or ""))
+    return "".join(parts).strip() if found else ""
+
+
+def _latin_name(credit: dict) -> str:
+    """The credited name if it is already Latin script, else a primary English
+    alias; '' when MusicBrainz does not state a Latin form clearly."""
+    artist = credit.get("artist") or {}
+    name = str(credit.get("name") or artist.get("name") or "")
+    if name and name.isascii():
+        return name
+    for alias in artist.get("aliases") or []:
+        if isinstance(alias, dict) and str(alias.get("locale") or "").startswith("en") and alias.get("primary") \
+                and str(alias.get("name") or "").isascii():
+            return str(alias["name"])
+    return ""
+
+
+def credit_latin(credits: list | None) -> str:
+    parts: list[str] = []
+    for c in credits or []:
+        if not isinstance(c, dict):
+            continue
+        latin = _latin_name(c)
+        if not latin:
+            return ""  # one unknown artist and the whole credit stays as written
+        parts.append(latin)
+        parts.append(str(c.get("joinphrase") or ""))
+    return "".join(parts).strip()
+
+
 def _pick_release(releases: list) -> dict | None:
     """Earliest official release (compilations last) so the album is the one the song came out on."""
     best = None
@@ -110,6 +160,7 @@ def candidate_from_recording(rec: dict) -> Candidate:
     release_id = None
     release_group_id = None
     track = ""
+    release_credit = (release or {}).get("artist-credit")
     if release:
         album = str(release.get("title") or "")
         date = str(release.get("date") or "")
@@ -137,4 +188,10 @@ def candidate_from_recording(rec: dict) -> Candidate:
         mb_recording_id=str(rec.get("id") or "") or None,
         mb_release_id=release_id,
         mb_release_group_id=release_group_id,
+        mb_artist_ids=credit_ids(rec.get("artist-credit")),
+        mb_album_artist_ids=credit_ids(release_credit),
+        artist_sort=credit_sort(rec.get("artist-credit")),
+        album_artist_sort=credit_sort(release_credit),
+        artist_latin=credit_latin(rec.get("artist-credit")),
+        album_artist_latin=credit_latin(release_credit),
     )

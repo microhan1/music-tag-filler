@@ -122,6 +122,10 @@ def _artists(items: list | None) -> str:
     return "".join(parts).strip()
 
 
+def _artist_ids(items: list | None) -> list[str]:
+    return [str(a["id"]) for a in items or [] if isinstance(a, dict) and a.get("id")]
+
+
 def _candidate(rec: dict, score: float) -> Candidate:
     release = None
     for rel in rec.get("releases") or []:
@@ -159,5 +163,7 @@ def _candidate(rec: dict, score: float) -> Candidate:
         thumb_url=CAA_RELEASE.format(id=release_id, size=250) if release_id else None,
         mb_recording_id=str(rec.get("id") or "") or None,
         mb_release_id=release_id,
+        mb_artist_ids=_artist_ids(rec.get("artists")),
+        mb_album_artist_ids=_artist_ids((release or {}).get("artists")),
         acoustid_score=score,
     )

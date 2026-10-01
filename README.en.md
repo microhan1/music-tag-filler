@@ -46,6 +46,24 @@ The exe accepts the same arguments (`music-tag-filler.exe song.mp3 --auto`). It 
 
 Tests: `pip install -r requirements-dev.txt`, then `python -m pytest tests`. Fixtures come from the audio in `samples/`.
 
+## Artist identifiers
+
+So that the same artist saved as `岡田 有希子`, `岡田有希子` or `Yukiko Okada` can later be grouped as one, saving writes identifiers next to the display names. Tag names match MusicBrainz Picard, so other tools read them.
+
+| What | mp3 | flac · ogg | m4a |
+| --- | --- | --- | --- |
+| MusicBrainz artist ID | `TXXX:MusicBrainz Artist Id` | `MUSICBRAINZ_ARTISTID` | `MusicBrainz Artist Id` |
+| Album artist ID | `TXXX:MusicBrainz Album Artist Id` | `MUSICBRAINZ_ALBUMARTISTID` | `MusicBrainz Album Artist Id` |
+| Album (release) ID | `TXXX:MusicBrainz Album Id` | `MUSICBRAINZ_ALBUMID` | `MusicBrainz Album Id` |
+| Recording ID | `UFID:http://musicbrainz.org` | `MUSICBRAINZ_TRACKID` | `MusicBrainz Track Id` |
+| Sort name (e.g. `Okada, Yukiko`) | `TSOP`, `TSO2` | `ARTISTSORT`, `ALBUMARTISTSORT` | `soar`, `soaa` |
+| iTunes artist ID | `TXXX:iTunes Artist Id` | `ITUNES_ARTISTID` | `iTunes Artist Id` |
+
+- Applying a MusicBrainz candidate writes the MusicBrainz IDs and sort names; an iTunes candidate writes the iTunes artist ID; a merged candidate writes both.
+- Several credited artists give several IDs (joined by `/` in mp3). Auto-selected files get them too.
+- The "Identifiers" line under the fields shows what a file has. Undo restores the identifiers as well.
+- The display name is the candidate's own. Set `artist_name_preference` to `"latin"` in `settings.json` to use a Latin-script name when MusicBrainz clearly provides one (default `"original"`).
+
 ## Find by sound setup
 
 - `third_party/fpcalc.exe` (Chromaprint) is bundled in the repository. If missing, download `chromaprint-fpcalc-*-windows-x86_64.zip` from [Chromaprint Releases](https://github.com/acoustid/chromaprint/releases) and put `fpcalc.exe` in `third_party/`, or set `fpcalc_path` in `settings.json`.

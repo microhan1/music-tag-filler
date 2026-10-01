@@ -180,13 +180,14 @@ def run_cli(args: argparse.Namespace) -> int:
             continue
         # a hand-picked candidate replaces the fields; --auto only fills gaps unless --overwrite
         overwrite = args.overwrite or not args.auto
-        new_tags = pipeline.apply_candidate(info.tags, chosen, overwrite)
+        new_tags = pipeline.apply_candidate(info.tags, chosen, overwrite, prefs.artist_name_preference == "latin")
+        ids = pipeline.ids_from_candidate(chosen)
         cover = pipeline.fetch_cover(chosen, country, on_wait=_on_wait) if (overwrite or info.cover is None) else None
-        if new_tags == info.tags and cover is None:
+        if new_tags == info.tags and cover is None and ids.merged_over(info.ids) == info.ids:
             print(t("msg_nothing_to_save"))
             continue
         try:
-            res = pipeline.save_file(path, new_tags, cover, prefs)
+            res = pipeline.save_file(path, new_tags, cover, prefs, ids=ids)
         except tags.FileLocked:
             print(t("err_readonly") + f": {name}", file=sys.stderr)
             failures += 1

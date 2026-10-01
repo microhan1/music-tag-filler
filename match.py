@@ -40,18 +40,29 @@ class Candidate:
     mb_recording_id: str | None = None
     mb_release_id: str | None = None
     mb_release_group_id: str | None = None
+    # identity, written to the file beside the display names (see tags.Ids)
+    mb_artist_ids: list[str] = dataclasses.field(default_factory=list)
+    mb_album_artist_ids: list[str] = dataclasses.field(default_factory=list)
+    artist_sort: str = ""
+    album_artist_sort: str = ""
+    itunes_artist_id: str | None = None
+    # Latin-script rendering of the artist, only when the source states one clearly
+    artist_latin: str = ""
+    album_artist_latin: str = ""
     acoustid_score: float | None = None  # 0..1 from the fingerprint service
     score: int = 0
 
     def source_label(self) -> str:
         return "+".join(self.sources)
 
-    def tag_values(self) -> dict[str, str]:
+    def tag_values(self, latin: bool = False) -> dict[str, str]:
+        artist = self.artist_latin if latin and self.artist_latin else self.artist
+        album_artist = self.album_artist_latin if latin and self.album_artist_latin else self.album_artist
         return {
             "title": self.title,
-            "artist": self.artist,
+            "artist": artist,
             "album": self.album,
-            "album_artist": self.album_artist or self.artist,
+            "album_artist": album_artist or artist,
             "year": self.year,
             "track": self.track,
             "genre": self.genre,
@@ -223,7 +234,9 @@ def merge(cands: list[Candidate]) -> list[Candidate]:
 
 def _fill(target: Candidate, extra: Candidate) -> None:
     for name in ("album", "album_artist", "year", "track", "genre", "cover_url", "thumb_url",
-                 "itunes_id", "mb_recording_id", "mb_release_id", "mb_release_group_id", "length"):
+                 "itunes_id", "mb_recording_id", "mb_release_id", "mb_release_group_id", "length",
+                 "mb_artist_ids", "mb_album_artist_ids", "artist_sort", "album_artist_sort",
+                 "itunes_artist_id", "artist_latin", "album_artist_latin"):
         if not getattr(target, name) and getattr(extra, name):
             setattr(target, name, getattr(extra, name))
     if extra.acoustid_score is not None and (target.acoustid_score is None or extra.acoustid_score > target.acoustid_score):

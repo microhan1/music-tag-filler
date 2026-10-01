@@ -46,6 +46,24 @@ exe 也接受相同的参数（`music-tag-filler.exe song.mp3 --auto`）。但�
 
 测试：`pip install -r requirements-dev.txt`，然后 `python -m pytest tests`。测试素材来自 `samples/` 中的音频。
 
+## 艺术家标识符
+
+同一位歌手即使被存成 `岡田 有希子`、`岡田有希子` 或 `Yukiko Okada`，以后也能归为同一人：保存时会在名称之外写入标识符。标签名与 MusicBrainz Picard 相同，其他工具也能读取。
+
+| 内容 | mp3 | flac · ogg | m4a |
+| --- | --- | --- | --- |
+| MusicBrainz 艺术家 ID | `TXXX:MusicBrainz Artist Id` | `MUSICBRAINZ_ARTISTID` | `MusicBrainz Artist Id` |
+| 专辑艺术家 ID | `TXXX:MusicBrainz Album Artist Id` | `MUSICBRAINZ_ALBUMARTISTID` | `MusicBrainz Album Artist Id` |
+| 专辑（发行）ID | `TXXX:MusicBrainz Album Id` | `MUSICBRAINZ_ALBUMID` | `MusicBrainz Album Id` |
+| 录音 ID | `UFID:http://musicbrainz.org` | `MUSICBRAINZ_TRACKID` | `MusicBrainz Track Id` |
+| 排序用名称（如 `Okada, Yukiko`） | `TSOP`、`TSO2` | `ARTISTSORT`、`ALBUMARTISTSORT` | `soar`、`soaa` |
+| iTunes 艺术家 ID | `TXXX:iTunes Artist Id` | `ITUNES_ARTISTID` | `iTunes Artist Id` |
+
+- 应用 MusicBrainz 候选会写入 MusicBrainz ID 和排序名称；应用 iTunes 候选会写入 iTunes 艺术家 ID；合并的候选两者都写。
+- 有多位艺术家时写入多个 ID（mp3 中用 `/` 连接）。自动选择的文件也会写入。
+- 字段下方的“标识符”一行显示该文件已有的标识符。撤销也会恢复标识符。
+- 显示用的歌手名使用候选的原文。把 `settings.json` 的 `artist_name_preference` 设为 `"latin"`，在 MusicBrainz 明确提供拉丁字母名称时使用该名称（默认 `"original"`）。
+
 ## 按声音查找的准备
 
 - 需要 `third_party/fpcalc.exe`（Chromaprint），仓库已附带。若缺失，请从 [Chromaprint Releases](https://github.com/acoustid/chromaprint/releases) 下载 `chromaprint-fpcalc-*-windows-x86_64.zip`，把 `fpcalc.exe` 放入 `third_party/`，或在 `settings.json` 的 `fpcalc_path` 中填写路径。

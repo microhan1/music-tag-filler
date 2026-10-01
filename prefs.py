@@ -19,6 +19,9 @@ class Prefs:
     rename: bool = False
     save_alert: bool = False  # pop up a dialog after saving; the status line always reports
     cover_max_px: int = 1000
+    # "original": the artist name as the source credits it; "latin": a Latin-script
+    # name when MusicBrainz clearly provides one (IDs are written either way)
+    artist_name_preference: str = "original"
 
     def effective_country(self) -> str:
         if self.country in COUNTRIES:
@@ -42,7 +45,10 @@ def load() -> Prefs:
         rename=typed("rename", bool),
         save_alert=typed("save_alert", bool),
         cover_max_px=typed("cover_max_px", int),
+        artist_name_preference=typed("artist_name_preference", str).strip().lower(),
     )
+    if p.artist_name_preference not in ("original", "latin"):
+        p.artist_name_preference = default.artist_name_preference
     if p.country not in COUNTRIES:
         p.country = ""
     if not 200 <= p.cover_max_px <= 4000:

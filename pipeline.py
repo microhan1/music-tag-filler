@@ -79,14 +79,29 @@ def auto_pick(result: SearchResult) -> Candidate | None:
     return best if best.score >= match.AUTO_SELECT_SCORE else None
 
 
-def apply_candidate(current: tags.Tags, cand: Candidate, overwrite: bool) -> tags.Tags:
+def apply_candidate(current: tags.Tags, cand: Candidate, overwrite: bool, latin: bool = False) -> tags.Tags:
     """Tags after applying a candidate. overwrite=False only fills empty fields,
-    which is what automatic picks do: a best-album rip must keep its album."""
+    which is what automatic picks do: a best-album rip must keep its album.
+    latin=True prefers the Latin-script artist name when the candidate has one."""
     merged = current.as_dict()
-    for key, value in cand.tag_values().items():
+    for key, value in cand.tag_values(latin).items():
         if value and (overwrite or not merged.get(key)):
             merged[key] = value
     return tags.Tags.from_dict(merged)
+
+
+def ids_from_candidate(cand: Candidate) -> tags.Ids:
+    """The identity tags a candidate brings: MusicBrainz IDs and sort names, and
+    the iTunes artist ID when the candidate (also) came from iTunes."""
+    return tags.Ids(
+        mb_artist_ids=list(cand.mb_artist_ids),
+        mb_album_artist_ids=list(cand.mb_album_artist_ids),
+        mb_album_id=cand.mb_release_id or "",
+        mb_recording_id=cand.mb_recording_id or "",
+        artist_sort=cand.artist_sort,
+        album_artist_sort=cand.album_artist_sort,
+        itunes_artist_id=cand.itunes_artist_id or "",
+    )
 
 
 def query_text(info: tags.FileInfo) -> str:
@@ -169,7 +184,9 @@ def search_sound(path: str, prefs: Prefs, query: str = "", file_length: float | 
         if full is None:
             continue
         for name in ("title", "artist", "album", "album_artist", "year", "track", "genre",
-                     "cover_url", "thumb_url", "mb_release_id", "length"):
+                     "cover_url", "thumb_url", "mb_release_id", "mb_release_group_id", "length",
+                     "mb_artist_ids", "mb_album_artist_ids", "artist_sort", "album_artist_sort",
+                     "artist_latin", "album_artist_latin"):
             value = getattr(full, name)
             if value:
                 setattr(cand, name, value)
@@ -214,8 +231,9 @@ def fetch_thumb(cand: Candidate, *, cancel: threading.Event | None = None) -> by
         return None
 
 
-def save_file(path: str, new_tags: tags.Tags, cover: bytes | None, prefs: Prefs, *, rename: bool | None = None) -> SaveResult:
-    """Backup, write tags (+ cover if given), optionally rename. Raises tags.FileLocked."""
+def save_file(path: str, new_tags: tags.Tags, cover: bytes | None, prefs: Prefs, *, rename: bool | None = None,
+              ids: tags.Ids | None = None) -> SaveResult:
+    """Backup, write tags (+ cover and identity tags if given), optionally rename. Raises tags.FileLocked."""
     if not os.access(path, os.W_OK):
         raise tags.FileLocked(path)
     backup = tags.make_backup(path)
@@ -227,7 +245,7 @@ def save_file(path: str, new_tags: tags.Tags, cover: bytes | None, prefs: Prefs,
             prepared, mime = tags.prepare_cover(cover, prefs.cover_max_px)
         except Exception:
             cover_failed = True
-    tags.write_file(path, new_tags, prepared, mime)
+    tags.write_file(path, new_tags, prepared, mime, ids)
     result = SaveResult(path, backup, cover_failed)
     do_rename = prefs.rename if rename is None else rename
     if do_rename:

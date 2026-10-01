@@ -22,9 +22,9 @@ import zlib
 
 import mutagen
 from mutagen.flac import FLAC, Picture
-from mutagen.id3 import APIC, ID3, TALB, TCON, TDRC, TIT2, TPE1, TPE2, TRCK, ID3NoHeaderError
+from mutagen.id3 import APIC, ID3, TALB, TCON, TDRC, TIT2, TPE1, TPE2, TRCK, TSO2, TSOP, TXXX, UFID, ID3NoHeaderError
 from mutagen.mp3 import MP3
-from mutagen.mp4 import MP4, MP4Cover
+from mutagen.mp4 import MP4, MP4Cover, MP4FreeForm
 from mutagen.ogg import OggPage
 from mutagen.oggvorbis import OggVorbis
 
@@ -72,6 +72,41 @@ class Tags:
 
 
 @dataclasses.dataclass
+class Ids:
+    """Identity of the artist, album and recording, written next to the display
+    names so that a library organiser can group the same artist written in kanji,
+    with or without a space, or romanised, by ID instead of by spelling. Tag
+    names follow MusicBrainz Picard so other tools read them."""
+    mb_artist_ids: list[str] = dataclasses.field(default_factory=list)
+    mb_album_artist_ids: list[str] = dataclasses.field(default_factory=list)
+    mb_album_id: str = ""  # release
+    mb_recording_id: str = ""
+    artist_sort: str = ""  # MusicBrainz sort-name, e.g. "Okada, Yukiko"
+    album_artist_sort: str = ""
+    itunes_artist_id: str = ""
+
+    def as_dict(self) -> dict:
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Ids":
+        def lst(key: str) -> list[str]:
+            value = data.get(key)
+            return [str(v) for v in value if v] if isinstance(value, list) else []
+
+        return cls(lst("mb_artist_ids"), lst("mb_album_artist_ids"), str(data.get("mb_album_id") or ""),
+                   str(data.get("mb_recording_id") or ""), str(data.get("artist_sort") or ""),
+                   str(data.get("album_artist_sort") or ""), str(data.get("itunes_artist_id") or ""))
+
+    def is_empty(self) -> bool:
+        return not any(dataclasses.astuple(self))
+
+    def merged_over(self, base: "Ids") -> "Ids":
+        """These values where present, the file's existing ones elsewhere."""
+        return Ids(**{f.name: getattr(self, f.name) or getattr(base, f.name) for f in dataclasses.fields(self)})
+
+
+@dataclasses.dataclass
 class FileInfo:
     path: str
     fmt: str
@@ -81,6 +116,7 @@ class FileInfo:
     tags: Tags
     cover: bytes | None
     cover_mime: str
+    ids: Ids = dataclasses.field(default_factory=Ids)
 
 
 # ------------------------------------------------------------------ files
@@ -169,7 +205,120 @@ def read_file(path: str) -> FileInfo:
     else:
         tags, cover, mime = _read_vorbis(audio.tags)
         cover, mime = _read_vorbis_picture(audio.tags) if cover is None else (cover, mime)
-    return FileInfo(os.path.abspath(path), fmt, length, bitrate, rate, tags, cover, mime)
+    return FileInfo(os.path.abspath(path), fmt, length, bitrate, rate, tags, cover, mime, _read_ids(fmt, audio.tags))
+
+
+# ------------------------------------------------------------------ identifiers
+MB_UFID_OWNER = "http://musicbrainz.org"
+_TXXX_ARTIST = "MusicBrainz Artist Id"
+_TXXX_ALBUM_ARTIST = "MusicBrainz Album Artist Id"
+_TXXX_ALBUM = "MusicBrainz Album Id"
+_TXXX_ITUNES_ARTIST = "iTunes Artist Id"
+_MP4_FREE = "----:com.apple.iTunes:"
+
+
+def _split_ids(values) -> list[str]:
+    out: list[str] = []
+    for v in values or []:
+        out.extend(p.strip() for p in str(v).replace(";", "/").split("/") if p.strip())
+    return out
+
+
+def _read_ids(fmt: str, tg) -> Ids:
+    if tg is None:
+        return Ids()
+    if fmt == "MP3":
+        txxx = {f.desc: list(f.text) for f in tg.getall("TXXX")}
+        rec = ""
+        for f in tg.getall("UFID"):
+            if f.owner == MB_UFID_OWNER:
+                rec = bytes(f.data).decode("ascii", "replace")
+        return Ids(_split_ids(txxx.get(_TXXX_ARTIST)), _split_ids(txxx.get(_TXXX_ALBUM_ARTIST)),
+                   "".join(_split_ids(txxx.get(_TXXX_ALBUM))[:1]), rec, _text(tg.get("TSOP")), _text(tg.get("TSO2")),
+                   "".join(_split_ids(txxx.get(_TXXX_ITUNES_ARTIST))[:1]))
+    if fmt == "M4A":
+        def free(name: str) -> list[str]:
+            return [bytes(v).decode("utf-8", "replace") for v in tg.get(_MP4_FREE + name) or []]
+
+        def plain(key: str) -> str:
+            v = tg.get(key)
+            return str(v[0]) if v else ""
+
+        return Ids(free(_TXXX_ARTIST), free(_TXXX_ALBUM_ARTIST), "".join(free(_TXXX_ALBUM)[:1]),
+                   "".join(free("MusicBrainz Track Id")[:1]), plain("soar"), plain("soaa"),
+                   "".join(free(_TXXX_ITUNES_ARTIST)[:1]))
+    # Vorbis comments (FLAC, OGG)
+    def many(key: str) -> list[str]:
+        return [str(v) for v in tg.get(key) or [] if v]
+
+    return Ids(many("musicbrainz_artistid"), many("musicbrainz_albumartistid"), _first(tg, "musicbrainz_albumid"),
+               _first(tg, "musicbrainz_trackid"), _first(tg, "artistsort"), _first(tg, "albumartistsort"),
+               _first(tg, "itunes_artistid"))
+
+
+def _set_ids_id3(id3: ID3, ids: Ids) -> None:
+    """Write the whole identity set (called after update_to_v23, which drops the
+    v2.4-only TSOP; ID3v2.3 has no multi-value text, so IDs are joined by '/')."""
+    def txxx(desc: str, values: list[str]) -> None:
+        id3.delall("TXXX:" + desc)
+        if values:
+            id3.add(TXXX(encoding=1, desc=desc, text=["/".join(values)]))
+
+    txxx(_TXXX_ARTIST, ids.mb_artist_ids)
+    txxx(_TXXX_ALBUM_ARTIST, ids.mb_album_artist_ids)
+    txxx(_TXXX_ALBUM, [ids.mb_album_id] if ids.mb_album_id else [])
+    txxx(_TXXX_ITUNES_ARTIST, [ids.itunes_artist_id] if ids.itunes_artist_id else [])
+    id3.delall("UFID:" + MB_UFID_OWNER)
+    if ids.mb_recording_id:  # the recording ID lives in UFID, as Picard and beets expect
+        id3.add(UFID(owner=MB_UFID_OWNER, data=ids.mb_recording_id.encode("ascii", "ignore")))
+    for key, cls, value in (("TSOP", TSOP, ids.artist_sort), ("TSO2", TSO2, ids.album_artist_sort)):
+        id3.delall(key)
+        if value:
+            id3.add(cls(encoding=1, text=[value]))
+
+
+def _set_ids_vorbis(vc, ids: Ids) -> None:
+    mapping = {
+        "musicbrainz_artistid": ids.mb_artist_ids, "musicbrainz_albumartistid": ids.mb_album_artist_ids,
+        "musicbrainz_albumid": [ids.mb_album_id], "musicbrainz_trackid": [ids.mb_recording_id],
+        "artistsort": [ids.artist_sort], "albumartistsort": [ids.album_artist_sort],
+        "itunes_artistid": [ids.itunes_artist_id],
+    }
+    for key, values in mapping.items():
+        values = [v for v in values if v]
+        if key in vc:
+            del vc[key]
+        if values:
+            vc[key] = values
+
+
+def _set_ids_mp4(tg, ids: Ids) -> None:
+    free = {
+        _TXXX_ARTIST: ids.mb_artist_ids, _TXXX_ALBUM_ARTIST: ids.mb_album_artist_ids,
+        _TXXX_ALBUM: [ids.mb_album_id], "MusicBrainz Track Id": [ids.mb_recording_id],
+        _TXXX_ITUNES_ARTIST: [ids.itunes_artist_id],
+    }
+    for name, values in free.items():
+        key = _MP4_FREE + name
+        values = [v for v in values if v]
+        if key in tg:
+            del tg[key]
+        if values:
+            tg[key] = [MP4FreeForm(v.encode("utf-8")) for v in values]
+    for key, value in (("soar", ids.artist_sort), ("soaa", ids.album_artist_sort)):
+        if key in tg:
+            del tg[key]
+        if value:
+            tg[key] = [value]
+
+
+def _final_ids(fmt: str, tg, ids: "Ids | None", replace: bool) -> Ids:
+    """What the file should hold after this write: the given set as is (replace,
+    used by undo), or merged over what the file already has."""
+    existing = _read_ids(fmt, tg)
+    if ids is None:
+        return existing
+    return ids if replace else ids.merged_over(existing)
 
 
 def read_cover(path: str) -> tuple[bytes | None, str]:
@@ -269,19 +418,21 @@ def _read_mp4(mp4) -> tuple[Tags, bytes | None, str]:
 
 
 # ------------------------------------------------------------------ writing
-def write_file(path: str, tags: Tags, cover: bytes | None = None, cover_mime: str = "image/jpeg") -> None:
+def write_file(path: str, tags: Tags, cover: bytes | None = None, cover_mime: str = "image/jpeg",
+               ids: Ids | None = None, replace_ids: bool = False) -> None:
     """Write the seven text fields; replace the cover when `cover` is given.
-    Empty text fields are removed from the file."""
+    Empty text fields are removed from the file. `ids` adds the identity tags
+    (kept as they are when None); replace_ids makes the file hold exactly `ids`."""
     fmt, audio = _open(path)
     try:
         if fmt == "MP3":
-            _write_id3(audio, tags, cover, cover_mime)
+            _write_id3(audio, tags, cover, cover_mime, ids, replace_ids)
         elif fmt == "FLAC":
-            _write_flac(audio, tags, cover, cover_mime)
+            _write_flac(audio, tags, cover, cover_mime, ids, replace_ids)
         elif fmt == "M4A":
-            _write_mp4(audio, tags, cover, cover_mime)
+            _write_mp4(audio, tags, cover, cover_mime, ids, replace_ids)
         else:
-            _write_ogg(audio, tags, cover, cover_mime)
+            _write_ogg(audio, tags, cover, cover_mime, ids, replace_ids)
     except PermissionError as exc:
         raise FileLocked(path) from exc
     except OSError as exc:
@@ -292,10 +443,12 @@ def write_file(path: str, tags: Tags, cover: bytes | None = None, cover_mime: st
         raise FileLocked(f"{path}: {exc}") from exc
 
 
-def _write_id3(mp3: MP3, tags: Tags, cover: bytes | None, mime: str) -> None:
+def _write_id3(mp3: MP3, tags: Tags, cover: bytes | None, mime: str, ids: Ids | None = None,
+               replace_ids: bool = False) -> None:
     if mp3.tags is None:
         mp3.add_tags()
     id3: ID3 = mp3.tags
+    final_ids = _final_ids("MP3", id3, ids, replace_ids)
     frames = {
         "TIT2": (TIT2, tags.title), "TPE1": (TPE1, tags.artist), "TALB": (TALB, tags.album),
         "TPE2": (TPE2, tags.album_artist), "TDRC": (TDRC, tags.year), "TRCK": (TRCK, tags.track),
@@ -310,6 +463,7 @@ def _write_id3(mp3: MP3, tags: Tags, cover: bytes | None, mime: str) -> None:
         id3.delall("APIC")
         id3.add(APIC(encoding=0, mime=mime, type=3, desc="Cover", data=cover))
     id3.update_to_v23()
+    _set_ids_id3(id3, final_ids)
     mp3.save(v2_version=3, v1=1)
 
 
@@ -342,20 +496,26 @@ def _picture(cover: bytes, mime: str) -> Picture:
     return pic
 
 
-def _write_flac(flac: FLAC, tags: Tags, cover: bytes | None, mime: str) -> None:
+def _write_flac(flac: FLAC, tags: Tags, cover: bytes | None, mime: str, ids: Ids | None = None,
+                replace_ids: bool = False) -> None:
     if flac.tags is None:
         flac.add_tags()
     _vorbis_set(flac.tags, tags)
+    if ids is not None:
+        _set_ids_vorbis(flac.tags, _final_ids("FLAC", flac.tags, ids, replace_ids))
     if cover is not None:
         flac.clear_pictures()
         flac.add_picture(_picture(cover, mime))
     flac.save()
 
 
-def _write_ogg(ogg: OggVorbis, tags: Tags, cover: bytes | None, mime: str) -> None:
+def _write_ogg(ogg: OggVorbis, tags: Tags, cover: bytes | None, mime: str, ids: Ids | None = None,
+               replace_ids: bool = False) -> None:
     if ogg.tags is None:
         ogg.add_tags()
     _vorbis_set(ogg.tags, tags)
+    if ids is not None:
+        _set_ids_vorbis(ogg.tags, _final_ids("OGG", ogg.tags, ids, replace_ids))
     if cover is not None:
         if "metadata_block_picture" in ogg.tags:
             del ogg.tags["metadata_block_picture"]
@@ -363,9 +523,12 @@ def _write_ogg(ogg: OggVorbis, tags: Tags, cover: bytes | None, mime: str) -> No
     ogg.save()
 
 
-def _write_mp4(mp4: MP4, tags: Tags, cover: bytes | None, mime: str) -> None:
+def _write_mp4(mp4: MP4, tags: Tags, cover: bytes | None, mime: str, ids: Ids | None = None,
+               replace_ids: bool = False) -> None:
     if mp4.tags is None:
         mp4.add_tags()
+    if ids is not None:
+        _set_ids_mp4(mp4.tags, _final_ids("M4A", mp4.tags, ids, replace_ids))
     mapping = {
         "\xa9nam": tags.title, "\xa9ART": tags.artist, "\xa9alb": tags.album, "aART": tags.album_artist,
         "\xa9day": tags.year, "\xa9gen": tags.genre,
@@ -481,6 +644,7 @@ def make_backup(path: str, overwrite: bool = False) -> str:
         "size": len(raw),
         "sha256": sha256_bytes(raw),
         "tags": info.tags.as_dict(),
+        "ids": info.ids.as_dict(),
         "cover": {"mime": info.cover_mime, "b64": base64.b64encode(info.cover).decode("ascii")} if info.cover else None,
         "layout": None,
     }
@@ -544,7 +708,9 @@ def restore_backup(path: str) -> bool:
     cover = record.get("cover")
     data = base64.b64decode(cover["b64"]) if isinstance(cover, dict) and cover.get("b64") else None
     mime = str(cover.get("mime") or "image/jpeg") if isinstance(cover, dict) else "image/jpeg"
-    write_file(path, Tags.from_dict(record["tags"]), data, mime)
+    saved_ids = record.get("ids")
+    write_file(path, Tags.from_dict(record["tags"]), data, mime,
+               Ids.from_dict(saved_ids) if isinstance(saved_ids, dict) else None, replace_ids=True)
     if data is None:
         _remove_cover(path)
     return False

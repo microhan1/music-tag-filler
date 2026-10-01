@@ -46,6 +46,24 @@ exe도 같은 인자를 받습니다(`music-tag-filler.exe song.mp3 --auto`). �
 
 시험은 `pip install -r requirements-dev.txt` 후 `python -m pytest tests`로 돌립니다. 픽스처는 `samples/`의 음원을 씁니다.
 
+## 아티스트 식별 정보
+
+같은 가수가 `岡田 有希子`, `岡田有希子`, `Yukiko Okada`처럼 여러 표기로 저장되어도 나중에 같은 사람으로 묶을 수 있게, 저장할 때 이름 글자와 함께 식별자를 태그에 적습니다. 태그 이름은 MusicBrainz Picard와 같아 다른 도구에서도 읽힙니다.
+
+| 내용 | mp3 | flac · ogg | m4a |
+| --- | --- | --- | --- |
+| MusicBrainz 아티스트 ID | `TXXX:MusicBrainz Artist Id` | `MUSICBRAINZ_ARTISTID` | `MusicBrainz Artist Id` |
+| 앨범 아티스트 ID | `TXXX:MusicBrainz Album Artist Id` | `MUSICBRAINZ_ALBUMARTISTID` | `MusicBrainz Album Artist Id` |
+| 앨범(발매) ID | `TXXX:MusicBrainz Album Id` | `MUSICBRAINZ_ALBUMID` | `MusicBrainz Album Id` |
+| 녹음 ID | `UFID:http://musicbrainz.org` | `MUSICBRAINZ_TRACKID` | `MusicBrainz Track Id` |
+| 정렬용 이름 (예: `Okada, Yukiko`) | `TSOP`, `TSO2` | `ARTISTSORT`, `ALBUMARTISTSORT` | `soar`, `soaa` |
+| iTunes 아티스트 ID | `TXXX:iTunes Artist Id` | `ITUNES_ARTISTID` | `iTunes Artist Id` |
+
+- MusicBrainz 후보를 적용하면 MusicBrainz ID와 정렬용 이름을, iTunes 후보를 적용하면 iTunes 아티스트 ID를 적습니다. 두 출처가 합쳐진 후보는 둘 다 적습니다.
+- 가수가 여러 명이면 ID도 여러 개 적습니다(mp3는 `/`로 이어 씀). 자동 선택된 파일에도 적습니다.
+- 위쪽 칸 아래의 "식별자" 줄에서 그 파일에 어떤 식별자가 있는지 볼 수 있습니다. 되돌리기는 식별자까지 원래대로 돌립니다.
+- 표시용 가수명은 고른 후보의 원문 그대로 씁니다. `settings.json`의 `artist_name_preference`를 `"latin"`으로 바꾸면, MusicBrainz가 로마자 이름을 명확히 줄 때에 한해 그 이름을 씁니다(기본 `"original"`).
+
 ## 소리로 찾기 준비
 
 - `third_party/fpcalc.exe`(Chromaprint)가 필요합니다. 저장소에 동봉되어 있고, 없으면 [Chromaprint Releases](https://github.com/acoustid/chromaprint/releases)에서 `chromaprint-fpcalc-*-windows-x86_64.zip`을 받아 `fpcalc.exe`를 `third_party/`에 넣거나 `settings.json`의 `fpcalc_path`에 경로를 적습니다.

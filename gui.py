@@ -39,7 +39,7 @@ COVER_PX = 240
 THUMB_PX = 40
 PREVIEW_PX = 320  # hover preview of a candidate's cover
 PREVIEW_DELAY_MS = 250
-TOP_PANE_PX = 372
+TOP_PANE_PX = 398
 IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif")
 CHECK = "\u2713"
 
@@ -144,6 +144,7 @@ class FileState:
     has_cover: bool = False  # the file itself carries a cover (bytes are read on demand)
     cover_key: str | None = None  # a new cover waiting in the CoverStore
     cover_changed: bool = False
+    pending_ids: tags.Ids | None = None  # identity tags of the applied candidate, written on save
     query: str = ""
     candidates: list[Candidate] = dataclasses.field(default_factory=list)
     result: pipeline.SearchResult | None = None
@@ -160,8 +161,16 @@ class FileState:
     def changed_fields(self) -> set[str]:
         return {f for f in tags.FIELDS if self.values.get(f, "") != self.original(f)}
 
+    def final_ids(self) -> tags.Ids:
+        """Identity tags the file will hold after saving."""
+        existing = self.info.ids if self.info else tags.Ids()
+        return self.pending_ids.merged_over(existing) if self.pending_ids is not None else existing
+
+    def ids_changed(self) -> bool:
+        return self.info is not None and self.pending_ids is not None and self.final_ids() != self.info.ids
+
     def dirty(self) -> bool:
-        return bool(self.changed_fields()) or self.cover_changed
+        return bool(self.changed_fields()) or self.cover_changed or self.ids_changed()
 
     def current_tags(self) -> tags.Tags:
         return tags.Tags.from_dict(self.values)
@@ -425,6 +434,9 @@ class App:
             e.grid(row=i, column=1, sticky="ew", pady=p(3), ipady=p(3))
             self.var_fields[f].trace_add("write", lambda *_a, f=f: self._on_field_edit(f))
             self.entries[f] = e
+        # read-only: which identity tags (MusicBrainz / iTunes IDs, sort name) the file has or will get
+        self.lbl_ids = ttk.Label(fields, style="Small.TLabel")
+        self.lbl_ids.grid(row=len(tags.FIELDS) + 1, column=0, columnspan=2, sticky="w", pady=(p(4), 0))
 
         bottom = ttk.LabelFrame(self.paned, padding=p(12))
         self._reg(bottom, "section_candidates")
@@ -807,9 +819,19 @@ class App:
         s = self.current
         if s is None or s.info is None:
             self.lbl_file_info.configure(text="")
+            self.lbl_ids.configure(text="")
             return
         self.lbl_file_info.configure(text=t("lbl_file_info", name=s.name(), fmt=s.info.fmt,
                                             length=self._fmt_length(s.info.length), bitrate=s.info.bitrate))
+        ids = s.final_ids()
+        sources = [name for name, present in (("MusicBrainz", bool(ids.mb_artist_ids or ids.mb_recording_id)),
+                                              ("iTunes", bool(ids.itunes_artist_id))) if present]
+        text = ", ".join(sources) if sources else t("ids_none")
+        if ids.artist_sort:
+            text += f" ({ids.artist_sort})"
+        if s.ids_changed():
+            text += " " + t("ids_pending")
+        self.lbl_ids.configure(text=t("lbl_ids", text=text))
 
     def _paint_fields(self) -> None:
         changed = self.current.changed_fields() if self.current else set()
@@ -1153,7 +1175,11 @@ class App:
 
     # ------------------------------------------------------------ apply / save / undo
     def _apply_values(self, s: FileState, cand: Candidate, overwrite: bool = True) -> None:
-        s.values = pipeline.apply_candidate(s.current_tags(), cand, overwrite).as_dict()
+        latin = self.prefs.artist_name_preference == "latin"
+        s.values = pipeline.apply_candidate(s.current_tags(), cand, overwrite, latin).as_dict()
+        # IDs are written for automatic picks too: an ID is an empty field being filled.
+        # Editing the artist text by hand afterwards keeps them (text is display, ID is identity).
+        s.pending_ids = pipeline.ids_from_candidate(cand)
         s.saved = False
 
     def apply_selected(self) -> None:
@@ -1165,7 +1191,7 @@ class App:
         s.selected, s.auto, s.confirmed = cand, False, True
         self._apply_values(s, cand)
         self._show_file(s)
-        if cand.cover_url:
+        if cand.cover_url or cand.album:  # the album name alone can find a cover (iTunes fallback)
             self._run(self._fetch_cover_job, s, cand)
 
     def _fetch_cover_job(self, s: FileState, cand: Candidate) -> None:
@@ -1206,7 +1232,7 @@ class App:
             self._ui(self.progress.configure, {"value": 100.0 * (idx - 1) / len(states)})
             try:
                 res = pipeline.save_file(s.path, s.current_tags(), s.load_cover() if s.cover_changed else None,
-                                         self.prefs, rename=self.var_rename.get())
+                                         self.prefs, rename=self.var_rename.get(), ids=s.pending_ids)
             except tags.FileLocked:
                 failed.append(s.name())
                 continue
@@ -1215,7 +1241,7 @@ class App:
                 continue
             s.path = res.path
             s.attach_info(tags.read_file(s.path))
-            s.cover_key, s.cover_changed = None, False
+            s.cover_key, s.cover_changed, s.pending_ids = None, False, None
             s.saved, s.auto, s.confirmed = True, False, True
             last_backup = os.path.basename(res.backup)
             if res.cover_failed:
@@ -1262,7 +1288,7 @@ class App:
             self._ui(self._set_status, "err_readonly")
             return
         s.attach_info(tags.read_file(s.path))
-        s.cover_key, s.cover_changed = None, False
+        s.cover_key, s.cover_changed, s.pending_ids = None, False, None
         s.saved, s.auto, s.confirmed, s.selected = False, False, False, None
         self._ui(self._undo_done, s, exact)
 

@@ -46,6 +46,24 @@ exe も同じ引数を受け付けます（`music-tag-filler.exe song.mp3 --auto
 
 テストは `pip install -r requirements-dev.txt` の後 `python -m pytest tests` で実行します。フィクスチャは `samples/` の音源を使います。
 
+## アーティスト識別子
+
+同じ歌手が `岡田 有希子`、`岡田有希子`、`Yukiko Okada` のように別々の表記で保存されていても後で同一人物としてまとめられるよう、保存時に名前とは別に識別子をタグへ書き込みます。タグ名は MusicBrainz Picard と同じなので他のツールでも読めます。
+
+| 内容 | mp3 | flac · ogg | m4a |
+| --- | --- | --- | --- |
+| MusicBrainz アーティスト ID | `TXXX:MusicBrainz Artist Id` | `MUSICBRAINZ_ARTISTID` | `MusicBrainz Artist Id` |
+| アルバムアーティスト ID | `TXXX:MusicBrainz Album Artist Id` | `MUSICBRAINZ_ALBUMARTISTID` | `MusicBrainz Album Artist Id` |
+| アルバム（リリース）ID | `TXXX:MusicBrainz Album Id` | `MUSICBRAINZ_ALBUMID` | `MusicBrainz Album Id` |
+| 録音 ID | `UFID:http://musicbrainz.org` | `MUSICBRAINZ_TRACKID` | `MusicBrainz Track Id` |
+| ソート名（例: `Okada, Yukiko`） | `TSOP`、`TSO2` | `ARTISTSORT`、`ALBUMARTISTSORT` | `soar`、`soaa` |
+| iTunes アーティスト ID | `TXXX:iTunes Artist Id` | `ITUNES_ARTISTID` | `iTunes Artist Id` |
+
+- MusicBrainz の候補を適用すると MusicBrainz ID とソート名を、iTunes の候補なら iTunes アーティスト ID を書き込みます。統合された候補は両方を書き込みます。
+- アーティストが複数いる場合は ID も複数書き込みます（mp3 は `/` でつなぎます）。自動選択されたファイルにも書き込みます。
+- 入力欄の下の「識別子」行で、そのファイルにどの識別子があるかを確認できます。元に戻すと識別子も元に戻ります。
+- 表示用のアーティスト名は選んだ候補の原文です。`settings.json` の `artist_name_preference` を `"latin"` にすると、MusicBrainz がラテン文字の名前を明確に示す場合に限りその名前を使います（既定は `"original"`）。
+
 ## 音で探すための準備
 
 - `third_party/fpcalc.exe`（Chromaprint）が必要です。リポジトリに同梱しています。無い場合は [Chromaprint Releases](https://github.com/acoustid/chromaprint/releases) から `chromaprint-fpcalc-*-windows-x86_64.zip` を取得し、`fpcalc.exe` を `third_party/` に置くか、`settings.json` の `fpcalc_path` にパスを書きます。
