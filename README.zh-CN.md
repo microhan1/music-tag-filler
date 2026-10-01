@@ -64,6 +64,13 @@ exe 也接受相同的参数（`music-tag-filler.exe song.mp3 --auto`）。但�
 - 字段下方的“标识符”一行显示该文件已有的标识符。撤销也会恢复标识符。
 - 显示用的歌手名使用候选的原文。把 `settings.json` 的 `artist_name_preference` 设为 `"latin"`，在 MusicBrainz 明确提供拉丁字母名称时使用该名称（默认 `"original"`）。
 
+## 补全标签之后：整理文件夹
+
+标签补全后，可以用 [音乐文件夹整理 (music-folder-organizer)](https://github.com/microhan1/music-folder-organizer) 把文件整理成 `歌手/专辑/01 - 标题.mp3` 结构并清理重复文件。无需联网，执行前先显示预览，每次整理都可以撤销。
+
+- 这里写入的 MusicBrainz 艺术家 ID 可以把 `岡田 有希子`、`岡田有希子` 这样的不同写法合并到同一个文件夹；排序名称可在整理规则中用 `{artist_sort}`。
+- 本工具的备份 `<文件名>.tagbak.json` 会随音乐文件一起移动，所以整理文件夹之后，这里的 **撤销** 依然有效。
+
 ## 按声音查找的准备
 
 - 需要 `third_party/fpcalc.exe`（Chromaprint），仓库已附带。若缺失，请从 [Chromaprint Releases](https://github.com/acoustid/chromaprint/releases) 下载 `chromaprint-fpcalc-*-windows-x86_64.zip`，把 `fpcalc.exe` 放入 `third_party/`，或在 `settings.json` 的 `fpcalc_path` 中填写路径。

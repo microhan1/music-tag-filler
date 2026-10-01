@@ -64,6 +64,13 @@ exe도 같은 인자를 받습니다(`music-tag-filler.exe song.mp3 --auto`). �
 - 위쪽 칸 아래의 "식별자" 줄에서 그 파일에 어떤 식별자가 있는지 볼 수 있습니다. 되돌리기는 식별자까지 원래대로 돌립니다.
 - 표시용 가수명은 고른 후보의 원문 그대로 씁니다. `settings.json`의 `artist_name_preference`를 `"latin"`으로 바꾸면, MusicBrainz가 로마자 이름을 명확히 줄 때에 한해 그 이름을 씁니다(기본 `"original"`).
 
+## 태그를 채운 다음: 폴더 정리
+
+태그를 채웠으면 [음악 폴더 정리 (music-folder-organizer)](https://github.com/microhan1/music-folder-organizer)로 `가수/앨범/01 - 제목.mp3` 구조로 옮기고 중복을 정리할 수 있습니다. 인터넷 없이 동작하고, 실행 전에 미리보기를 보여 주며, 되돌리기가 있습니다.
+
+- 여기서 적은 MusicBrainz 아티스트 ID로 `岡田 有希子`·`岡田有希子` 같은 표기 차이를 한 폴더로 묶고, 정렬용 이름은 `{artist_sort}`로 폴더 이름에 쓸 수 있습니다.
+- 이 도구의 백업 `<파일명>.tagbak.json`도 음악 파일을 따라 함께 옮겨지므로, 폴더를 정리한 뒤에도 여기서 **되돌리기**가 됩니다.
+
 ## 소리로 찾기 준비
 
 - `third_party/fpcalc.exe`(Chromaprint)가 필요합니다. 저장소에 동봉되어 있고, 없으면 [Chromaprint Releases](https://github.com/acoustid/chromaprint/releases)에서 `chromaprint-fpcalc-*-windows-x86_64.zip`을 받아 `fpcalc.exe`를 `third_party/`에 넣거나 `settings.json`의 `fpcalc_path`에 경로를 적습니다.

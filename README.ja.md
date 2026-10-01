@@ -64,6 +64,13 @@ exe も同じ引数を受け付けます（`music-tag-filler.exe song.mp3 --auto
 - 入力欄の下の「識別子」行で、そのファイルにどの識別子があるかを確認できます。元に戻すと識別子も元に戻ります。
 - 表示用のアーティスト名は選んだ候補の原文です。`settings.json` の `artist_name_preference` を `"latin"` にすると、MusicBrainz がラテン文字の名前を明確に示す場合に限りその名前を使います（既定は `"original"`）。
 
+## タグを埋めたら：フォルダ整理
+
+タグを埋めたら、[音楽フォルダ整理 (music-folder-organizer)](https://github.com/microhan1/music-folder-organizer) で `アーティスト/アルバム/01 - タイトル.mp3` の構成に移し、重複も整理できます。インターネット接続は不要で、実行前にプレビューを表示し、毎回の整理を元に戻せます。
+
+- ここで書き込んだ MusicBrainz アーティスト ID で `岡田 有希子`・`岡田有希子` のような表記の違いを一つのフォルダにまとめ、ソート名は整理ルールの `{artist_sort}` で使えます。
+- このツールのバックアップ `<ファイル名>.tagbak.json` も音楽ファイルと一緒に移動するので、フォルダ整理の後もここで **元に戻す** が使えます。
+
 ## 音で探すための準備
 
 - `third_party/fpcalc.exe`（Chromaprint）が必要です。リポジトリに同梱しています。無い場合は [Chromaprint Releases](https://github.com/acoustid/chromaprint/releases) から `chromaprint-fpcalc-*-windows-x86_64.zip` を取得し、`fpcalc.exe` を `third_party/` に置くか、`settings.json` の `fpcalc_path` にパスを書きます。

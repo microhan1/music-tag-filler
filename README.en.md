@@ -64,6 +64,13 @@ So that the same artist saved as `岡田 有希子`, `岡田有希子` or `Yukik
 - The "Identifiers" line under the fields shows what a file has. Undo restores the identifiers as well.
 - The display name is the candidate's own. Set `artist_name_preference` to `"latin"` in `settings.json` to use a Latin-script name when MusicBrainz clearly provides one (default `"original"`).
 
+## After the tags: organize the folders
+
+Once the tags are filled, [Music Folder Organizer](https://github.com/microhan1/music-folder-organizer) moves the files into `Artist/Album/01 - Title.mp3` folders and sorts out duplicates. It works offline, shows a preview before anything moves, and can undo every run.
+
+- The MusicBrainz artist IDs written here let it put spellings such as `岡田 有希子` and `岡田有希子` into one folder, and the sort names are available as `{artist_sort}` in its folder pattern.
+- This tool's backups (`<file>.tagbak.json`) move along with the music, so **Undo** here still works after the folders are reorganized.
+
 ## Find by sound setup
 
 - `third_party/fpcalc.exe` (Chromaprint) is bundled in the repository. If missing, download `chromaprint-fpcalc-*-windows-x86_64.zip` from [Chromaprint Releases](https://github.com/acoustid/chromaprint/releases) and put `fpcalc.exe` in `third_party/`, or set `fpcalc_path` in `settings.json`.
