@@ -1,5 +1,7 @@
 # 음악 정보 채우기 (Music Tag Filler)
 
+<img src="assets/icon.png" width="96" alt="icon">
+
 [English](README.en.md) · [中文](README.zh-CN.md) · [日本語](README.ja.md)
 
 > **파일은 인터넷으로 올라가지 않습니다.** 검색어와 음향 지문(숫자 열)만 보냅니다.

@@ -1,5 +1,7 @@
 # 音乐标签补全 (Music Tag Filler)
 
+<img src="assets/icon.png" width="96" alt="icon">
+
 [한국어](README.md) · [English](README.en.md) · [日本語](README.ja.md)
 
 > **文件不会上传到互联网。** 只发送搜索关键词和声音指纹（一串数字）。

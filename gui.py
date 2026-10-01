@@ -195,6 +195,7 @@ class App:
         self.root.geometry(f"{self.px(1140)}x{self.px(820)}")
         self.root.minsize(self.px(960), self.px(700))
         self.root.configure(bg=BG)
+        self._set_window_icon()
 
         self.prefs = prefs_mod.load()
         self.files: list[FileState] = []
@@ -246,6 +247,19 @@ class App:
             self.root.after(100, lambda: self.add_paths(initial_files))
 
     # ------------------------------------------------------------ look
+    def _set_window_icon(self) -> None:
+        """assets/icon.ico from the source folder or the PyInstaller bundle."""
+        base = os.path.join(i18n.resource_dir(), "assets")
+        ico, png = os.path.join(base, "icon.ico"), os.path.join(base, "icon.png")
+        try:
+            if sys.platform == "win32" and os.path.isfile(ico):
+                self.root.iconbitmap(default=ico)  # default= applies to every later window too
+            elif os.path.isfile(png):
+                self._icon_photo = ImageTk.PhotoImage(Image.open(png))
+                self.root.iconphoto(True, self._icon_photo)
+        except (tk.TclError, OSError):
+            pass  # an icon is cosmetic; never block startup over it
+
     def px(self, n: int) -> int:
         return int(round(n * self.scale))
 

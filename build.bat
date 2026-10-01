@@ -16,6 +16,9 @@ if exist "acoustid_key.txt" set KEYFILE=--add-data "acoustid_key.txt;."
 
 python -m PyInstaller --noconfirm --clean --onefile --windowed ^
   --name music-tag-filler ^
+  --icon "assets\icon.ico" ^
+  --add-data "assets\icon.ico;assets" ^
+  --add-data "assets\icon.png;assets" ^
   --add-data "lang;lang" ^
   --add-data "third_party\LICENSE-chromaprint;third_party" ^
   %FPCALC% ^

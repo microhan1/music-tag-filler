@@ -1,5 +1,7 @@
 # Music Tag Filler (음악 정보 채우기)
 
+<img src="assets/icon.png" width="96" alt="icon">
+
 [한국어](README.md) · [中文](README.zh-CN.md) · [日本語](README.ja.md)
 
 > **Your files are never uploaded.** Only the search query and an audio fingerprint (a string of numbers) are sent.

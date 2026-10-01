@@ -1,5 +1,7 @@
 # 音楽タグ補完 (Music Tag Filler)
 
+<img src="assets/icon.png" width="96" alt="icon">
+
 [한국어](README.md) · [English](README.en.md) · [中文](README.zh-CN.md)
 
 > **ファイルはインターネットに送信されません。** 検索語と音声指紋（数字の列）だけを送ります。
