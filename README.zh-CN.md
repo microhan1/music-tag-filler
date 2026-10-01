@@ -68,7 +68,7 @@ exe 也接受相同的参数（`music-tag-filler.exe song.mp3 --auto`）。但�
 
 标签补全后，可以用 [音乐文件夹整理 (music-folder-organizer)](https://github.com/microhan1/music-folder-organizer) 把文件整理成 `歌手/专辑/01 - 标题.mp3` 结构并清理重复文件。无需联网，执行前先显示预览，每次整理都可以撤销。
 
-- 这里写入的 MusicBrainz 艺术家 ID 可以把 `岡田 有希子`、`岡田有希子` 这样的不同写法合并到同一个文件夹；排序名称可在整理规则中用 `{artist_sort}`。
+- 这里写入的 MusicBrainz·iTunes 艺术家 ID 可以把 `岡田 有希子`、`岡田有希子` 这样的不同写法合并到同一个文件夹（音乐文件夹整理 v0.1.2 及以上）；排序名称可在整理规则中用 `{artist_sort}`。
 - 本工具的备份 `<文件名>.tagbak.json` 会随音乐文件一起移动，所以整理文件夹之后，这里的 **撤销** 依然有效。
 
 ## 按声音查找的准备

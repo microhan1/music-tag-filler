@@ -68,7 +68,7 @@ So that the same artist saved as `岡田 有希子`, `岡田有希子` or `Yukik
 
 Once the tags are filled, [Music Folder Organizer](https://github.com/microhan1/music-folder-organizer) moves the files into `Artist/Album/01 - Title.mp3` folders and sorts out duplicates. It works offline, shows a preview before anything moves, and can undo every run.
 
-- The MusicBrainz artist IDs written here let it put spellings such as `岡田 有希子` and `岡田有希子` into one folder, and the sort names are available as `{artist_sort}` in its folder pattern.
+- The MusicBrainz and iTunes artist IDs written here let it put spellings such as `岡田 有希子` and `岡田有希子` into one folder (Music Folder Organizer v0.1.2+), and the sort names are available as `{artist_sort}` in its folder pattern.
 - This tool's backups (`<file>.tagbak.json`) move along with the music, so **Undo** here still works after the folders are reorganized.
 
 ## Find by sound setup
