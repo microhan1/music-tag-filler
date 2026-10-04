@@ -29,5 +29,6 @@
 3. 빌드 전 `Get-Process music-tag-filler`로 사용자가 앱을 켜 뒀는지 확인. 켜져 있으면 끄지 말고 다른 `--distpath`로. `dist\settings.json`은 백업하고 내용은 출력하지 않는다
 4. PowerShell에서 `build.bat`을 절대 경로로 실행. `acoustid_key.txt`가 있어야 키가 묶인다(키 값은 출력 금지)
 5. `python -m PyInstaller.utils.cliutils.archive_viewer --list dist/music-tag-filler.exe`로 `acoustid_key.txt`·`third_party\fpcalc.exe`·아이콘 확인
-6. exe를 띄워 창 제목 확인(띄운 프로세스만 닫기) → 태그 → `gh release create` → 올린 파일을 다시 받아 SHA-256 비교
+6. exe를 띄워 창 제목 확인(띄운 프로세스만 닫기) → 태그 → `gh release create --notes-file docs/releases/vX.Y.Z.md` → 올린 파일을 다시 받아 SHA-256 비교
+   - 릴리스 노트는 `docs/releases/vX.Y.Z.md`에 쓰고 커밋한다(`build/`는 git에 안 올라가므로 거기 두지 않는다). 빌드가 끝나면 `build/`의 중간 산출물은 지우고 `dist-settings.backup.json`만 남긴다
 7. 프로그램이 안 바뀐 릴리스면 노트에 그렇다고 적는다
