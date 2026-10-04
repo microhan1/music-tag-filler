@@ -1223,6 +1223,8 @@ class App:
     def _save_job(self, states: list[FileState]) -> None:
         saved = 0
         failed: list[str] = []
+        broken: list[str] = []
+        not_renamed: list[str] = []
         cover_failed = 0
         last_backup = ""
         for idx, s in enumerate(states, 1):
@@ -1236,9 +1238,14 @@ class App:
             except tags.FileLocked:
                 failed.append(s.name())
                 continue
+            except tags.BrokenBackup:
+                broken.append(s.name())
+                continue
             except Exception:
                 failed.append(s.name())
                 continue
+            if res.rename_failed:
+                not_renamed.append(s.name())
             s.path = res.path
             s.attach_info(tags.read_file(s.path))
             s.cover_key, s.cover_changed, s.pending_ids = None, False, None
@@ -1247,9 +1254,10 @@ class App:
             if res.cover_failed:
                 cover_failed += 1
             saved += 1
-        self._ui(self._save_done, saved, failed, cover_failed, last_backup)
+        self._ui(self._save_done, saved, failed, cover_failed, last_backup, broken, not_renamed)
 
-    def _save_done(self, saved: int, failed: list[str], cover_failed: int, last_backup: str) -> None:
+    def _save_done(self, saved: int, failed: list[str], cover_failed: int, last_backup: str,
+                   broken: list[str] | None = None, not_renamed: list[str] | None = None) -> None:
         self._refresh_list()
         if self.current is not None:
             self._show_file(self.current)
@@ -1258,13 +1266,19 @@ class App:
             lines.append(t("msg_backup_note", file=last_backup))
         if cover_failed:
             lines.append(t("msg_cover_failed"))
+        if not_renamed:
+            lines.append(t("msg_not_renamed") + ": " + ", ".join(not_renamed))
         if failed:
             lines.append(t("err_readonly") + ": " + ", ".join(failed))
+        if broken:
+            lines.append(t("err_backup_broken") + ": " + ", ".join(broken))
         self._set_status_text(" \u00b7 ".join(lines))
         if self._closing:
             return
-        if failed:
+        if failed or broken:
             messagebox.showerror(t("dlg_error"), "\n".join(lines), parent=self.root)
+        elif not_renamed:
+            messagebox.showwarning(t("dlg_done"), "\n".join(lines), parent=self.root)
         elif self.var_save_alert.get():
             messagebox.showinfo(t("dlg_done"), "\n".join(lines), parent=self.root)
 

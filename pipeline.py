@@ -45,6 +45,7 @@ class SaveResult:
     backup: str
     cover_failed: bool = False
     renamed: bool = False
+    rename_failed: bool = False  # tags are saved; the file kept its name (and its backup)
 
 
 LOG_NAME = "music-tag-filler.log"
@@ -233,7 +234,9 @@ def fetch_thumb(cand: Candidate, *, cancel: threading.Event | None = None) -> by
 
 def save_file(path: str, new_tags: tags.Tags, cover: bytes | None, prefs: Prefs, *, rename: bool | None = None,
               ids: tags.Ids | None = None) -> SaveResult:
-    """Backup, write tags (+ cover and identity tags if given), optionally rename. Raises tags.FileLocked."""
+    """Backup, write tags (+ cover and identity tags if given), optionally rename.
+    Raises tags.FileLocked or tags.BrokenBackup before anything is written; a failed
+    rename after the write is reported in the result, not raised."""
     if not os.access(path, os.W_OK):
         raise tags.FileLocked(path)
     backup = tags.make_backup(path)
@@ -251,7 +254,11 @@ def save_file(path: str, new_tags: tags.Tags, cover: bytes | None, prefs: Prefs,
     if do_rename:
         target = tags.rename_target(path, new_tags)
         if target:
-            result.path = tags.rename_file(path, target)
-            result.backup = tags.backup_path(result.path)
-            result.renamed = True
+            try:
+                result.path = tags.rename_file(path, target)
+                result.backup = tags.backup_path(result.path)
+                result.renamed = True
+            except tags.RenameFailed as exc:
+                result.rename_failed = True
+                result.backup = exc.backup
     return result

@@ -50,6 +50,18 @@ class NoBackup(Exception):
     pass
 
 
+class BrokenBackup(Exception):
+    """An existing <file>.tagbak.json cannot be read: saving over it would leave no way back."""
+
+
+class RenameFailed(FileLocked):
+    """The file (with its backup) could not be renamed. ``backup`` is where the backup is now."""
+
+    def __init__(self, path: str, backup: str) -> None:
+        super().__init__(path)
+        self.backup = backup
+
+
 @dataclasses.dataclass
 class Tags:
     title: str = ""
@@ -596,23 +608,33 @@ def rename_target(path: str, tags: Tags) -> str | None:
         return None
     target = os.path.join(folder, stem + ext)
     n = 2
-    while os.path.exists(target):
+    # a leftover backup under that name may be someone's only original: never write over it
+    while os.path.exists(target) or os.path.exists(backup_path(target)):
         target = os.path.join(folder, f"{stem} ({n}){ext}")
         n += 1
     return target
 
 
 def rename_file(path: str, target: str) -> str:
+    """Rename the file and its backup together, or neither: undo finds the backup
+    by the file's name. Raises RenameFailed with both left under the old name."""
+    old_backup, new_backup = backup_path(path), backup_path(target)
+    has_backup = os.path.exists(old_backup)
+    if has_backup:
+        try:
+            os.replace(old_backup, new_backup)
+        except OSError as exc:
+            raise RenameFailed(path, old_backup) from exc
     try:
         os.replace(path, target)
     except OSError as exc:
-        raise FileLocked(path) from exc
-    old_backup = backup_path(path)
-    if os.path.exists(old_backup):
+        if not has_backup:
+            raise RenameFailed(path, old_backup) from exc
         try:
-            os.replace(old_backup, backup_path(target))
+            os.replace(new_backup, old_backup)  # put the backup back beside the file
         except OSError:
-            pass
+            raise RenameFailed(path, new_backup) from exc  # say where it really is
+        raise RenameFailed(path, old_backup) from exc
     return target
 
 
@@ -629,6 +651,10 @@ def make_backup(path: str, overwrite: bool = False) -> str:
     """Write <file>.tagbak.json unless it already exists (the first backup is the original)."""
     target = backup_path(path)
     if os.path.exists(target) and not overwrite:
+        try:
+            load_backup(path)  # the original must still be readable before anything is written
+        except NoBackup as exc:
+            raise BrokenBackup(target) from exc
         return target
     fmt = format_of(path)
     if fmt is None:

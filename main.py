@@ -192,7 +192,13 @@ def run_cli(args: argparse.Namespace) -> int:
             print(t("err_readonly") + f": {name}", file=sys.stderr)
             failures += 1
             continue
+        except tags.BrokenBackup:
+            print(t("err_backup_broken") + f": {name}", file=sys.stderr)
+            failures += 1
+            continue
         print(t("log_saved", path=res.path))
+        if res.rename_failed:
+            print(t("msg_not_renamed") + f": {name}", file=sys.stderr)
         print(t("msg_backup_note", file=os.path.basename(res.backup)))
         if res.cover_failed or (chosen.cover_url and cover is None):
             print(t("msg_cover_failed"))

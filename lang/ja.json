@@ -69,6 +69,8 @@
   "err_fingerprint_failed": "音声解析に失敗しました",
   "err_acoustid_key": "AcoustID API キーがないか期限切れです。acoustid.org でキーを取得し、settings.json の acoustid_key に書いてください",
   "err_readonly": "ファイルが読み取り専用か使用中です",
+  "err_backup_broken": "保存していません — 既存のバックアップ (.tagbak.json) を読めません",
+  "msg_not_renamed": "名前を変更できませんでした (使用中 — タグは保存済み、元に戻せます)",
   "err_open_failed": "ファイルを開けません: {name}",
   "log_saved": "保存: {path}",
   "log_skipped": "スキップ: {name}",

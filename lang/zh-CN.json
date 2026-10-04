@@ -69,6 +69,8 @@
   "err_fingerprint_failed": "声音分析失败",
   "err_acoustid_key": "AcoustID API 密钥缺失或已过期。请在 acoustid.org 申请密钥并填入 settings.json 的 acoustid_key",
   "err_readonly": "文件为只读或正在使用中",
+  "err_backup_broken": "未保存 — 无法读取已有的备份 (.tagbak.json)",
+  "msg_not_renamed": "未能重命名(正在使用 — 标签已保存，可撤销)",
   "err_open_failed": "无法打开文件：{name}",
   "log_saved": "已保存：{path}",
   "log_skipped": "已跳过：{name}",

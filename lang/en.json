@@ -69,6 +69,8 @@
   "err_fingerprint_failed": "Could not analyse the audio",
   "err_acoustid_key": "AcoustID API key missing or expired. Get a key at acoustid.org and put it in acoustid_key in settings.json",
   "err_readonly": "File is read-only or in use",
+  "err_backup_broken": "Not saved — the existing backup (.tagbak.json) cannot be read",
+  "msg_not_renamed": "Not renamed (in use — tags saved, undo still works)",
   "err_open_failed": "Cannot open file: {name}",
   "log_saved": "Saved: {path}",
   "log_skipped": "Skipped: {name}",
