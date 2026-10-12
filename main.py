@@ -13,6 +13,7 @@ import sys
 import i18n
 import pipeline
 import prefs as prefs_mod
+import search_lyrics
 import tags
 from i18n import t
 from match import AUTO_SELECT_SCORE, Candidate
@@ -48,6 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--country", choices=COUNTRIES, help=t("cli_country"))
     p.add_argument("--rename", action="store_true", help=t("cli_rename"))
     p.add_argument("--overwrite", action="store_true", help=t("cli_overwrite"))
+    p.add_argument("--lyrics", action="store_true", help=t("cli_lyrics"))
     p.add_argument("--sound", action="store_true", help=t("cli_sound"))
     p.add_argument("--undo", action="store_true", help=t("cli_undo"))
     p.add_argument("--no-recurse", action="store_true", help=t("cli_no_recurse"))
@@ -67,6 +69,35 @@ def _fmt_length(seconds: float | None) -> str:
     if not seconds:
         return "-"
     return f"{int(seconds // 60)}:{int(seconds % 60):02d}"
+
+
+_LYRICS_STATUS_KEY = {
+    search_lyrics.NOT_FOUND: "lyrics_not_found",
+    search_lyrics.BUSY: "lyrics_busy",
+    search_lyrics.INSTRUMENTAL: "lyrics_instrumental",
+    search_lyrics.CONFLICT: "lyrics_conflict",
+    search_lyrics.NO_LYRICS: "lyrics_no_lyrics",
+    search_lyrics.NEED_TAGS: "lyrics_need_tags",
+}
+
+
+def _lyrics_for(info: tags.FileInfo, new_tags: tags.Tags) -> str | None:
+    """Lyrics to add with --lyrics: only for a file without lyrics (a lyric is never replaced).
+    A tag holding only a player marker such as "[COWON S9]" counts as empty."""
+    note = search_lyrics.marker_only(info.lyrics)
+    if note:
+        print("  " + t("lbl_lyrics", text=t("lyrics_marker", text=note)))
+    elif info.lyrics.strip():
+        lines = sum(1 for line in info.lyrics.splitlines() if line.strip())
+        print("  " + t("lbl_lyrics", text=t("lyrics_has", lines=lines)))
+        return None
+    found = pipeline.find_lyrics(new_tags, info.length)
+    if found.status == search_lyrics.FOUND:
+        lines = sum(1 for line in found.text.splitlines() if line.strip())
+        print("  " + t("lbl_lyrics", text=t("lyrics_has", lines=lines)))
+        return found.text
+    print("  " + t("lbl_lyrics", text=t(_LYRICS_STATUS_KEY.get(found.status, "lyrics_not_found"))))
+    return None
 
 
 def _on_wait(seconds: float) -> None:
@@ -182,12 +213,15 @@ def run_cli(args: argparse.Namespace) -> int:
         overwrite = args.overwrite or not args.auto
         new_tags = pipeline.apply_candidate(info.tags, chosen, overwrite, prefs.artist_name_preference == "latin")
         ids = pipeline.ids_from_candidate(chosen)
-        cover = pipeline.fetch_cover(chosen, country, on_wait=_on_wait) if (overwrite or info.cover is None) else None
-        if new_tags == info.tags and cover is None and ids.merged_over(info.ids) == info.ids:
+        # --auto keeps a cover the file already has, so no cover is fetched for it
+        want_cover = overwrite or info.cover is None
+        cover = pipeline.fetch_cover(chosen, country, on_wait=_on_wait) if want_cover else None
+        lyrics = _lyrics_for(info, new_tags) if args.lyrics else None
+        if new_tags == info.tags and cover is None and ids.merged_over(info.ids) == info.ids and lyrics is None:
             print(t("msg_nothing_to_save"))
             continue
         try:
-            res = pipeline.save_file(path, new_tags, cover, prefs, ids=ids)
+            res = pipeline.save_file(path, new_tags, cover, prefs, ids=ids, lyrics=lyrics)
         except tags.FileLocked:
             print(t("err_readonly") + f": {name}", file=sys.stderr)
             failures += 1
@@ -196,11 +230,16 @@ def run_cli(args: argparse.Namespace) -> int:
             print(t("err_backup_broken") + f": {name}", file=sys.stderr)
             failures += 1
             continue
+        except Exception as exc:  # unexpected: one bad file must not end the whole run
+            pipeline.log_error(f"save {path}", exc)
+            print(t("err_save_failed") + f": {name}", file=sys.stderr)
+            failures += 1
+            continue
         print(t("log_saved", path=res.path))
         if res.rename_failed:
             print(t("msg_not_renamed") + f": {name}", file=sys.stderr)
         print(t("msg_backup_note", file=os.path.basename(res.backup)))
-        if res.cover_failed or (chosen.cover_url and cover is None):
+        if res.cover_failed or (want_cover and chosen.cover_url and cover is None):
             print(t("msg_cover_failed"))
         saved += 1
     print(t("msg_saved", count=saved))

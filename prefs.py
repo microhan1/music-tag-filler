@@ -18,6 +18,8 @@ class Prefs:
     fpcalc_path: str = ""
     rename: bool = False
     save_alert: bool = False  # pop up a dialog after saving; the status line always reports
+    lyrics: bool = False  # look lyrics up on LRCLIB when saving a file that has none
+    lyrics_notice_seen: bool = False  # the cautions are shown once when lyrics is first turned on
     cover_max_px: int = 1000
     # "original": the artist name as the source credits it; "latin": a Latin-script
     # name when MusicBrainz clearly provides one (IDs are written either way)
@@ -44,6 +46,8 @@ def load() -> Prefs:
         fpcalc_path=typed("fpcalc_path", str),
         rename=typed("rename", bool),
         save_alert=typed("save_alert", bool),
+        lyrics=typed("lyrics", bool),
+        lyrics_notice_seen=typed("lyrics_notice_seen", bool),
         cover_max_px=typed("cover_max_px", int),
         artist_name_preference=typed("artist_name_preference", str).strip().lower(),
     )

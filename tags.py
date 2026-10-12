@@ -22,7 +22,7 @@ import zlib
 
 import mutagen
 from mutagen.flac import FLAC, Picture
-from mutagen.id3 import APIC, ID3, TALB, TCON, TDRC, TIT2, TPE1, TPE2, TRCK, TSO2, TSOP, TXXX, UFID, ID3NoHeaderError
+from mutagen.id3 import APIC, ID3, TALB, TCON, TDRC, TIT2, TPE1, TPE2, TRCK, TSO2, TSOP, TXXX, UFID, USLT, ID3NoHeaderError
 from mutagen.mp3 import MP3
 from mutagen.mp4 import MP4, MP4Cover, MP4FreeForm
 from mutagen.ogg import OggPage
@@ -129,6 +129,7 @@ class FileInfo:
     cover: bytes | None
     cover_mime: str
     ids: Ids = dataclasses.field(default_factory=Ids)
+    lyrics: str = ""  # unsynced lyrics (USLT / LYRICS / ©lyr), "" when the file has none
 
 
 # ------------------------------------------------------------------ files
@@ -217,7 +218,62 @@ def read_file(path: str) -> FileInfo:
     else:
         tags, cover, mime = _read_vorbis(audio.tags)
         cover, mime = _read_vorbis_picture(audio.tags) if cover is None else (cover, mime)
-    return FileInfo(os.path.abspath(path), fmt, length, bitrate, rate, tags, cover, mime, _read_ids(fmt, audio.tags))
+    return FileInfo(os.path.abspath(path), fmt, length, bitrate, rate, tags, cover, mime, _read_ids(fmt, audio.tags),
+                    _read_lyrics(fmt, audio.tags))
+
+
+# ------------------------------------------------------------------ lyrics
+# Written: USLT (mp3), LYRICS (flac/ogg), ©lyr (m4a). Read: also UNSYNCEDLYRICS,
+# which Mp3tag and MediaMonkey write, so a file with lyrics from them counts as having lyrics.
+_VORBIS_LYRICS_KEYS = ("lyrics", "unsyncedlyrics", "unsynced lyrics")
+
+
+def _read_lyrics(fmt: str, tg) -> str:
+    if tg is None:
+        return ""
+    try:
+        if fmt == "MP3":
+            for frame in tg.getall("USLT"):
+                if str(frame.text).strip():
+                    return str(frame.text)
+            return ""
+        if fmt == "M4A":
+            value = tg.get("\xa9lyr")
+            return str(value[0]) if value and str(value[0]).strip() else ""
+        for key in _VORBIS_LYRICS_KEYS:
+            value = tg.get(key)
+            if value and str(value[0]).strip():
+                return str(value[0])
+    except (KeyError, IndexError, TypeError, ValueError):
+        return ""
+    return ""
+
+
+def read_lyrics(path: str) -> str:
+    """The lyrics text, read when it is shown, like read_cover()."""
+    return read_file(path).lyrics
+
+
+def _set_lyrics(fmt: str, tg, lyrics: str | None) -> None:
+    """None: leave the file's lyrics alone. "": remove them. Text: replace them."""
+    if lyrics is None:
+        return
+    text = lyrics.replace("\r\n", "\n").strip()
+    if fmt == "MP3":
+        tg.delall("USLT")
+        if text:
+            tg.add(USLT(encoding=3, lang="und", desc="", text=text))
+    elif fmt == "M4A":
+        if "\xa9lyr" in tg:
+            del tg["\xa9lyr"]
+        if text:
+            tg["\xa9lyr"] = [text]
+    else:
+        for key in _VORBIS_LYRICS_KEYS:
+            if key in tg:
+                del tg[key]
+        if text:
+            tg["lyrics"] = [text]
 
 
 # ------------------------------------------------------------------ identifiers
@@ -431,20 +487,21 @@ def _read_mp4(mp4) -> tuple[Tags, bytes | None, str]:
 
 # ------------------------------------------------------------------ writing
 def write_file(path: str, tags: Tags, cover: bytes | None = None, cover_mime: str = "image/jpeg",
-               ids: Ids | None = None, replace_ids: bool = False) -> None:
+               ids: Ids | None = None, replace_ids: bool = False, lyrics: str | None = None) -> None:
     """Write the seven text fields; replace the cover when `cover` is given.
     Empty text fields are removed from the file. `ids` adds the identity tags
-    (kept as they are when None); replace_ids makes the file hold exactly `ids`."""
+    (kept as they are when None); replace_ids makes the file hold exactly `ids`.
+    `lyrics`: None keeps the file's lyrics, "" removes them, text replaces them."""
     fmt, audio = _open(path)
     try:
         if fmt == "MP3":
-            _write_id3(audio, tags, cover, cover_mime, ids, replace_ids)
+            _write_id3(audio, tags, cover, cover_mime, ids, replace_ids, lyrics)
         elif fmt == "FLAC":
-            _write_flac(audio, tags, cover, cover_mime, ids, replace_ids)
+            _write_flac(audio, tags, cover, cover_mime, ids, replace_ids, lyrics)
         elif fmt == "M4A":
-            _write_mp4(audio, tags, cover, cover_mime, ids, replace_ids)
+            _write_mp4(audio, tags, cover, cover_mime, ids, replace_ids, lyrics)
         else:
-            _write_ogg(audio, tags, cover, cover_mime, ids, replace_ids)
+            _write_ogg(audio, tags, cover, cover_mime, ids, replace_ids, lyrics)
     except PermissionError as exc:
         raise FileLocked(path) from exc
     except OSError as exc:
@@ -456,7 +513,7 @@ def write_file(path: str, tags: Tags, cover: bytes | None = None, cover_mime: st
 
 
 def _write_id3(mp3: MP3, tags: Tags, cover: bytes | None, mime: str, ids: Ids | None = None,
-               replace_ids: bool = False) -> None:
+               replace_ids: bool = False, lyrics: str | None = None) -> None:
     if mp3.tags is None:
         mp3.add_tags()
     id3: ID3 = mp3.tags
@@ -474,6 +531,7 @@ def _write_id3(mp3: MP3, tags: Tags, cover: bytes | None, mime: str, ids: Ids | 
     if cover is not None:
         id3.delall("APIC")
         id3.add(APIC(encoding=0, mime=mime, type=3, desc="Cover", data=cover))
+    _set_lyrics("MP3", id3, lyrics)
     id3.update_to_v23()
     _set_ids_id3(id3, final_ids)
     mp3.save(v2_version=3, v1=1)
@@ -509,10 +567,11 @@ def _picture(cover: bytes, mime: str) -> Picture:
 
 
 def _write_flac(flac: FLAC, tags: Tags, cover: bytes | None, mime: str, ids: Ids | None = None,
-                replace_ids: bool = False) -> None:
+                replace_ids: bool = False, lyrics: str | None = None) -> None:
     if flac.tags is None:
         flac.add_tags()
     _vorbis_set(flac.tags, tags)
+    _set_lyrics("FLAC", flac.tags, lyrics)
     if ids is not None:
         _set_ids_vorbis(flac.tags, _final_ids("FLAC", flac.tags, ids, replace_ids))
     if cover is not None:
@@ -522,10 +581,11 @@ def _write_flac(flac: FLAC, tags: Tags, cover: bytes | None, mime: str, ids: Ids
 
 
 def _write_ogg(ogg: OggVorbis, tags: Tags, cover: bytes | None, mime: str, ids: Ids | None = None,
-               replace_ids: bool = False) -> None:
+               replace_ids: bool = False, lyrics: str | None = None) -> None:
     if ogg.tags is None:
         ogg.add_tags()
     _vorbis_set(ogg.tags, tags)
+    _set_lyrics("OGG", ogg.tags, lyrics)
     if ids is not None:
         _set_ids_vorbis(ogg.tags, _final_ids("OGG", ogg.tags, ids, replace_ids))
     if cover is not None:
@@ -536,9 +596,10 @@ def _write_ogg(ogg: OggVorbis, tags: Tags, cover: bytes | None, mime: str, ids: 
 
 
 def _write_mp4(mp4: MP4, tags: Tags, cover: bytes | None, mime: str, ids: Ids | None = None,
-               replace_ids: bool = False) -> None:
+               replace_ids: bool = False, lyrics: str | None = None) -> None:
     if mp4.tags is None:
         mp4.add_tags()
+    _set_lyrics("M4A", mp4.tags, lyrics)
     if ids is not None:
         _set_ids_mp4(mp4.tags, _final_ids("M4A", mp4.tags, ids, replace_ids))
     mapping = {
@@ -671,6 +732,7 @@ def make_backup(path: str, overwrite: bool = False) -> str:
         "sha256": sha256_bytes(raw),
         "tags": info.tags.as_dict(),
         "ids": info.ids.as_dict(),
+        "lyrics": info.lyrics,  # restored on tag-level undo; backups without this key leave lyrics alone
         "cover": {"mime": info.cover_mime, "b64": base64.b64encode(info.cover).decode("ascii")} if info.cover else None,
         "layout": None,
     }
@@ -735,8 +797,10 @@ def restore_backup(path: str) -> bool:
     data = base64.b64decode(cover["b64"]) if isinstance(cover, dict) and cover.get("b64") else None
     mime = str(cover.get("mime") or "image/jpeg") if isinstance(cover, dict) else "image/jpeg"
     saved_ids = record.get("ids")
+    saved_lyrics = record.get("lyrics")
     write_file(path, Tags.from_dict(record["tags"]), data, mime,
-               Ids.from_dict(saved_ids) if isinstance(saved_ids, dict) else None, replace_ids=True)
+               Ids.from_dict(saved_ids) if isinstance(saved_ids, dict) else None, replace_ids=True,
+               lyrics=saved_lyrics if isinstance(saved_lyrics, str) else None)
     if data is None:
         _remove_cover(path)
     return False

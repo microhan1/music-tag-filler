@@ -37,6 +37,7 @@ With several files, each one is searched and the first candidate scoring 90 or m
 ```bash
 python main.py song.mp3                      # lists numbered candidates and asks
 python main.py music_folder --auto --rename  # saves without asking at match >= 90, renames too
+python main.py music_folder --auto --lyrics  # also add lyrics to files without them
 python main.py song.mp3 --undo               # restores the original tags from the backup
 ```
 
@@ -45,6 +46,33 @@ python main.py song.mp3 --undo               # restores the original tags from t
 The exe accepts the same arguments (`music-tag-filler.exe song.mp3 --auto`). It is built as a windowed app, so in some environments the console shows no output; redirect it to a file (`> log.txt`) or run from source. With arguments but no console to print to, the window opens with those files loaded.
 
 Tests: `pip install -r requirements-dev.txt`, then `python -m pytest tests`. Fixtures come from the audio in `samples/`.
+
+## Filling lyrics
+
+Turn on **Also fill lyrics** in the option row and saving adds lyrics to files that have none. It is off by default. The cautions appear the first time you turn it on and whenever you press the **!** button next to it.
+
+- Lyrics come from [LRCLIB](https://lrclib.net/), a free collection of lyrics submitted by users. Only the title, the artist and the track length are sent.
+- Files that already have lyrics are left alone. When a file was saved only for lyrics and none are found, nothing is written to it.
+- A lyrics tag holding only a player marker such as `[COWON S9]` or `[3 LINES]` counts as empty and is filled. The screen shows "holds a marker, not lyrics · treated as empty", and Undo brings the marker back. When no lyrics are found the marker stays.
+- A missing lyric is better than a wrong one, so lyrics are added only when all of these hold:
+  - The artist matches. Another singer's song with the same title is not used.
+  - The version matches. `Instrumental`, `Off Vocal`, `Karaoke` or `TV size` must appear on both sides or on neither. Instrumental files are not even looked up.
+  - The length is within 3 seconds, and timed lyrics do not run past the end of the song.
+  - The lyrics submitted for the song agree with each other. Copies of one text count once. If they disagree, nothing is added.
+  - When a Japanese song has records in Japanese and romanised copies of them, the Japanese text is used. With romanised records only, the romanised lyrics are added.
+  - When there is a single record without timestamps, with nothing to compare it to, lyrics far too long for the song (over 12 letters a second) are not added. An 87-second intro once carried another song's whole lyrics.
+- Only plain lyrics are added, without timestamps.
+- When the only matching records are marked "no lyrics" on LRCLIB, nothing is added and the screen says so. Songs with lyrics were seen marked that way, so this is not called "instrumental".
+- The **Lyrics:** line under the file info shows the result. When a file has lyrics, **View lyrics** shows them.
+- The LRCLIB server is often busy. The app waits briefly and asks again; if that still fails it saves the tags and marks the file "server busy". Saving again looks again. After 5 failures in a row it stops looking up lyrics for that save.
+- Undo returns the file to how it was before the lyrics were added.
+- Lyrics are copyrighted. Use them only for your own files and do not share files that contain them.
+
+| Format | Lyrics tag |
+| --- | --- |
+| mp3 | `USLT` (language `und`) |
+| flac · ogg | `LYRICS` (`UNSYNCEDLYRICS`, written by other tools, also counts when reading) |
+| m4a | `©lyr` |
 
 ## Artist identifiers
 
@@ -84,13 +112,14 @@ Once the tags are filled, [Music Folder Organizer](https://github.com/microhan1/
 | [MusicBrainz](https://musicbrainz.org/) | songs, albums, release data | [MusicBrainz API rules](https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting) |
 | [AcoustID](https://acoustid.org/) | fingerprint → recording ID | [AcoustID web service terms](https://acoustid.org/webservice) |
 | [Cover Art Archive](https://coverartarchive.org/) | album covers | [About the CAA](https://musicbrainz.org/doc/Cover_Art_Archive) |
+| [LRCLIB](https://lrclib.net/) | lyrics (only when the option is on) | [API docs](https://lrclib.net/docs) |
 
 The Korean iTunes storefront sells no music and returns nothing, so when the chosen country has no results the US store is tried automatically. Titles and artist names are shown exactly as the source returns them.
 
 ## What it does not do
 
 - Never uploads a music file anywhere. Only the query and the fingerprint are sent.
-- No lyrics.
+- Lyrics only when the option is on, and existing lyrics are never changed. No `.lrc` files (use [LRCGET](https://github.com/tranxuanthang/lrcget) for those).
 - No downloading, converting or playing music.
 - No streaming-service accounts.
 - No scraping of services without an official API (Melon, Bugs, Genie, ...).

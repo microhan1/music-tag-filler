@@ -26,6 +26,7 @@ from i18n import t
 import match
 from match import Candidate
 import search_itunes
+import search_lyrics
 from search_itunes import COUNTRIES
 
 try:
@@ -39,7 +40,8 @@ COVER_PX = 240
 THUMB_PX = 40
 PREVIEW_PX = 320  # hover preview of a candidate's cover
 PREVIEW_DELAY_MS = 250
-TOP_PANE_PX = 398
+TOP_PANE_PX = 424
+LYRICS_BUSY_LIMIT = 5  # this many lookups in a row failing: stop asking LRCLIB for this save
 IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif")
 CHECK = "\u2713"
 
@@ -56,6 +58,8 @@ CHANGED_BG = "#fef3c7"
 NORMAL_BG = CARD
 AUTO_FG = "#9ca3af"
 DONE_FG = "#15803d"
+NOTICE = "#d97706"
+NOTICE_DARK = "#b45309"
 GOOD_FG = "#15803d"
 FAIR_FG = "#b45309"
 
@@ -145,6 +149,10 @@ class FileState:
     cover_key: str | None = None  # a new cover waiting in the CoverStore
     cover_changed: bool = False
     pending_ids: tags.Ids | None = None  # identity tags of the applied candidate, written on save
+    has_lyrics: bool = False  # the file itself carries real lyrics (the text is read when shown)
+    lyrics_lines: int = 0
+    lyrics_note: str = ""  # the tag holds only a marker such as "[COWON S9]": treated as empty
+    lyrics_status: str = ""  # last lookup this session (search_lyrics.FOUND / NOT_FOUND / BUSY / ...)
     query: str = ""
     candidates: list[Candidate] = dataclasses.field(default_factory=list)
     result: pipeline.SearchResult | None = None
@@ -172,6 +180,14 @@ class FileState:
     def dirty(self) -> bool:
         return bool(self.changed_fields()) or self.cover_changed or self.ids_changed()
 
+    def lyrics_wanted(self) -> bool:
+        """Saving with the lyrics option on would look lyrics up for this file:
+        it has none, it can be searched, and no final answer came back this session."""
+        return (self.info is not None and not self.has_lyrics and not self.error
+                and bool(self.values.get("title", "").strip()) and bool(self.values.get("artist", "").strip())
+                and self.lyrics_status not in (search_lyrics.FOUND, search_lyrics.NOT_FOUND, search_lyrics.INSTRUMENTAL,
+                                               search_lyrics.CONFLICT, search_lyrics.NO_LYRICS))
+
     def current_tags(self) -> tags.Tags:
         return tags.Tags.from_dict(self.values)
 
@@ -182,6 +198,11 @@ class FileState:
         """Keep the tags, drop the cover bytes: they are re-read when shown or saved."""
         self.has_cover = info.cover is not None
         info.cover = None
+        lyrics = info.lyrics or ""
+        self.lyrics_note = search_lyrics.marker_only(lyrics)
+        self.has_lyrics = bool(lyrics.strip()) and not self.lyrics_note
+        self.lyrics_lines = sum(1 for line in lyrics.splitlines() if line.strip())
+        info.lyrics = ""
         self.info = info
         self.values = info.tags.as_dict()
 
@@ -241,8 +262,11 @@ class App:
 
         self.var_lang = tk.StringVar(value=i18n.LANG_NAMES[i18n.current_lang()])
         self.var_country = tk.StringVar(value=self.prefs.effective_country())
+        # what worker threads read: a plain string kept in step with the combobox on the Tk thread
+        self._country = self.var_country.get()
         self.var_rename = tk.BooleanVar(value=self.prefs.rename)
         self.var_save_alert = tk.BooleanVar(value=self.prefs.save_alert)
+        self.var_lyrics = tk.BooleanVar(value=self.prefs.lyrics)
         self.var_query = tk.StringVar()
         self.var_fields = {f: tk.StringVar() for f in tags.FIELDS}
 
@@ -325,6 +349,10 @@ class App:
                         lightcolor=ACCENT, darkcolor=ACCENT, font=self.font_bold)
         style.map("Accent.TButton", background=[("active", ACCENT_DARK), ("disabled", "#93c5fd")],
                   foreground=[("disabled", "white")])
+        style.configure("Notice.TButton", background=NOTICE, foreground="white", bordercolor=NOTICE,
+                        lightcolor=NOTICE, darkcolor=NOTICE, font=self.font_bold, padding=(self.px(6), self.px(2)))
+        style.map("Notice.TButton", background=[("active", NOTICE_DARK)], foreground=[("disabled", "white")])
+        style.configure("Small.TButton", font=self.font_small, padding=(self.px(8), self.px(1)))
         style.configure("TCheckbutton", background=BG, indicatorsize=self.px(14), indicatormargin=(0, 0, self.px(6), 0))
         style.map("TCheckbutton", background=[("active", BG)])
         style.configure("TCombobox", fieldbackground=CARD, background=CARD, arrowcolor=MUTED, padding=(4, 2))
@@ -437,6 +465,13 @@ class App:
         # read-only: which identity tags (MusicBrainz / iTunes IDs, sort name) the file has or will get
         self.lbl_ids = ttk.Label(fields, style="Small.TLabel")
         self.lbl_ids.grid(row=len(tags.FIELDS) + 1, column=0, columnspan=2, sticky="w", pady=(p(4), 0))
+        lrow = ttk.Frame(fields)
+        lrow.grid(row=len(tags.FIELDS) + 2, column=0, columnspan=2, sticky="w", pady=(p(2), 0))
+        self.lbl_lyrics = ttk.Label(lrow, style="Small.TLabel")
+        self.lbl_lyrics.pack(side="left")
+        # packed only while the file has lyrics (see _update_lyrics_info)
+        self.btn_view_lyrics = self._reg(ttk.Button(lrow, command=self.view_lyrics, style="Small.TButton"),
+                                         "btn_view_lyrics")
 
         bottom = ttk.LabelFrame(self.paned, padding=p(12))
         self._reg(bottom, "section_candidates")
@@ -495,10 +530,17 @@ class App:
         self.btn_save_all.grid(row=0, column=2, padx=(p(8), 0))
         self.btn_undo = self._reg(ttk.Button(bar, command=self.undo_current), "btn_undo")
         self.btn_undo.grid(row=0, column=3, padx=(p(8), 0))
-        self.chk_rename = self._reg(ttk.Checkbutton(bar, variable=self.var_rename, command=self._save_prefs), "opt_rename")
-        self.chk_rename.grid(row=0, column=4, padx=(p(20), 0))
-        self.chk_alert = self._reg(ttk.Checkbutton(bar, variable=self.var_save_alert, command=self._save_prefs), "opt_save_alert")
-        self.chk_alert.grid(row=0, column=5, sticky="w", padx=(p(12), 0))
+        opts = ttk.Frame(bar)
+        opts.grid(row=0, column=4, columnspan=2, sticky="w", padx=(p(20), 0))
+        self.chk_rename = self._reg(ttk.Checkbutton(opts, variable=self.var_rename, command=self._save_prefs), "opt_rename")
+        self.chk_rename.pack(side="left")
+        self.chk_alert = self._reg(ttk.Checkbutton(opts, variable=self.var_save_alert, command=self._save_prefs), "opt_save_alert")
+        self.chk_alert.pack(side="left", padx=(p(12), 0))
+        self.chk_lyrics = self._reg(ttk.Checkbutton(opts, variable=self.var_lyrics, command=self._on_lyrics_toggle), "opt_lyrics")
+        self.chk_lyrics.pack(side="left", padx=(p(12), 0))
+        # "!" next to the option: what lyrics are fetched from, when they are not added, copyright
+        self.btn_lyrics_notice = ttk.Button(opts, text="!", width=2, style="Notice.TButton", command=self.show_lyrics_notice)
+        self.btn_lyrics_notice.pack(side="left", padx=(p(4), 0))
         # progress and status get a row of their own so long messages are not cut off
         self.progress = ttk.Progressbar(bar, mode="determinate", length=p(220))
         self.progress.grid(row=1, column=0, columnspan=2, sticky="w", pady=(p(10), 0))
@@ -574,7 +616,8 @@ class App:
     def _set_busy(self, busy: bool) -> None:
         state = "disabled" if busy else "normal"
         for w in (self.btn_search, self.btn_fp, self.btn_apply, self.btn_save, self.btn_save_all, self.btn_undo,
-                  self.btn_add, self.btn_add_dir, self.btn_clear, self.btn_cover, self.btn_cover_all):
+                  self.btn_add, self.btn_add_dir, self.btn_clear, self.btn_cover, self.btn_cover_all,
+                  self.btn_view_lyrics):
             w.configure(state=state)
         self.cmb_lang.configure(state="disabled" if busy else "readonly")
         self.cmb_country.configure(state="disabled" if busy else "readonly")
@@ -761,7 +804,7 @@ class App:
             if self._offline or not s.query:
                 self._ui(self._mark_searching, [s], False)
                 continue
-            result = pipeline.search_text(s.query, self.var_country.get(), s.info.length,
+            result = pipeline.search_text(s.query, self._country, s.info.length,
                                           on_wait=self._on_wait, cancel=self.cancel_event)
             s.result, s.candidates = result, result.candidates
             s.searching = False
@@ -775,7 +818,7 @@ class App:
                     s.selected, s.auto = pick, True
                     self._apply_values(s, pick, overwrite=False)
                     if not s.has_cover:
-                        cover = pipeline.fetch_cover(pick, self.var_country.get(), on_wait=self._on_wait, cancel=self.cancel_event)
+                        cover = pipeline.fetch_cover(pick, self._country, on_wait=self._on_wait, cancel=self.cancel_event)
                         if cover:
                             s.cover_key, s.cover_changed = self.covers.put(cover), True
             self._ui(self._after_file_loaded, s)
@@ -832,6 +875,45 @@ class App:
         if s.ids_changed():
             text += " " + t("ids_pending")
         self.lbl_ids.configure(text=t("lbl_ids", text=text))
+        self._update_lyrics_info()
+
+    def _update_lyrics_info(self) -> None:
+        s = self.current
+        if s is None or s.info is None:
+            self.lbl_lyrics.configure(text="")
+            self.btn_view_lyrics.pack_forget()
+            return
+        if s.has_lyrics:
+            text = t("lyrics_has", lines=s.lyrics_lines)
+            if not self.btn_view_lyrics.winfo_manager():
+                self.btn_view_lyrics.pack(side="left", padx=(self.px(8), 0))
+        else:
+            self.btn_view_lyrics.pack_forget()
+            status = s.lyrics_status
+            title, artist = s.values.get("title", "").strip(), s.values.get("artist", "").strip()
+            # a tag holding only a player marker ("[COWON S9]") is treated as empty
+            none = t("lyrics_marker", text=s.lyrics_note) if s.lyrics_note else t("lyrics_none")
+            if status == search_lyrics.BUSY:
+                text = t("lyrics_busy")
+            elif status == search_lyrics.NOT_FOUND:
+                text = t("lyrics_not_found")
+            elif status == search_lyrics.INSTRUMENTAL:
+                text = t("lyrics_instrumental")
+            elif status == search_lyrics.CONFLICT:
+                text = t("lyrics_conflict")
+            elif status == search_lyrics.NO_LYRICS:
+                text = t("lyrics_no_lyrics")
+            elif status == search_lyrics.NEED_TAGS and not (title and artist):
+                text = none + " \u00b7 " + t("lyrics_need_tags")
+            elif not self.var_lyrics.get():
+                text = none
+            elif search_lyrics.is_instrumental_title(title):
+                text = t("lyrics_instrumental")
+            elif not (title and artist):
+                text = none + " \u00b7 " + t("lyrics_need_tags")
+            else:
+                text = none + " " + t("lyrics_on_save")
+        self.lbl_lyrics.configure(text=t("lbl_lyrics", text=text))
 
     def _paint_fields(self) -> None:
         changed = self.current.changed_fields() if self.current else set()
@@ -845,7 +927,10 @@ class App:
         if self.current.auto:
             self.current.confirmed = True
         self.current.saved = False
+        if field in ("title", "artist") and self.current.lyrics_status != search_lyrics.FOUND:
+            self.current.lyrics_status = ""  # a new title or artist is a new lookup
         self._paint_fields()
+        self._update_lyrics_info()
         self._refresh_list()
 
     def _show_cover(self, data: bytes | None) -> None:
@@ -1132,7 +1217,7 @@ class App:
             self._ui(self._set_online, False)
             return
         self._ui(self._set_online, True)
-        result = pipeline.search_text(query, self.var_country.get(), s.info.length,
+        result = pipeline.search_text(query, self._country, s.info.length,
                                       on_wait=self._on_wait, cancel=self.cancel_event)
         self._ui(self._search_done, s, result)
 
@@ -1144,10 +1229,10 @@ class App:
         self._set_status("msg_searching")
         self._mark_searching([s], True)
         self._set_loading(True, "msg_fingerprinting")
-        self._run(self._search_sound_job, s)
+        self._run(self._search_sound_job, s, self.var_query.get().strip())
 
-    def _search_sound_job(self, s: FileState) -> None:
-        result = pipeline.search_sound(s.path, self.prefs, self.var_query.get().strip(), s.info.length,
+    def _search_sound_job(self, s: FileState, query: str = "") -> None:
+        result = pipeline.search_sound(s.path, self.prefs, query, s.info.length,
                                        on_wait=self._on_wait, cancel=self.cancel_event)
         if result.candidates and s.candidates:
             # fingerprint hits join the text-search rows; rank() merges duplicates and re-sorts
@@ -1181,6 +1266,8 @@ class App:
         # Editing the artist text by hand afterwards keeps them (text is display, ID is identity).
         s.pending_ids = pipeline.ids_from_candidate(cand)
         s.saved = False
+        if s.lyrics_status != search_lyrics.FOUND:
+            s.lyrics_status = ""
 
     def apply_selected(self) -> None:
         s = self.current
@@ -1195,7 +1282,7 @@ class App:
             self._run(self._fetch_cover_job, s, cand)
 
     def _fetch_cover_job(self, s: FileState, cand: Candidate) -> None:
-        data = pipeline.fetch_cover(cand, self.var_country.get(), on_wait=self._on_wait, cancel=self.cancel_event)
+        data = pipeline.fetch_cover(cand, self._country, on_wait=self._on_wait, cancel=self.cancel_event)
         if data:
             s.cover_key, s.cover_changed = self.covers.put(data), True
             if s is self.current:
@@ -1208,74 +1295,168 @@ class App:
         if s is None or s.info is None:
             self._set_status("msg_no_files")
             return
-        if not s.dirty():
+        want = bool(self.var_lyrics.get())
+        if not s.dirty() and not (want and s.lyrics_wanted()):
             self._set_status("msg_nothing_to_save")
             return
-        self._run(self._save_job, [s])
+        self._run(self._save_job, [s], want, bool(self.var_rename.get()))
 
     def save_all(self) -> None:
-        todo = [s for s in self.files if s.info is not None and s.dirty() and not s.saved]
+        want = bool(self.var_lyrics.get())
+        todo = [s for s in self.files if s.info is not None
+                and ((s.dirty() and not s.saved) or (want and s.lyrics_wanted()))]
         if not todo:
             self._set_status("msg_nothing_to_save")
             return
-        self._run(self._save_job, todo)
+        self._run(self._save_job, todo, want, bool(self.var_rename.get()))
 
-    def _save_job(self, states: list[FileState]) -> None:
-        saved = 0
+    def _write_state(self, s: FileState, lyrics: str | None, rename: bool) -> tuple[str, pipeline.SaveResult | None]:
+        """Save one file's pending changes (and lyrics). ('ok' | 'locked' | 'broken' | 'error', result)."""
+        try:
+            res = pipeline.save_file(s.path, s.current_tags(), s.load_cover() if s.cover_changed else None,
+                                     self.prefs, rename=rename, ids=s.pending_ids, lyrics=lyrics)
+        except tags.BrokenBackup:
+            return "broken", None
+        except tags.FileLocked:
+            return "locked", None
+        except Exception as exc:  # unexpected: the log says what, the user sees which file
+            pipeline.log_error(f"save {s.path}", exc)
+            return "error", None
+        s.path = res.path
+        s.cover_key, s.cover_changed, s.pending_ids = None, False, None
+        s.saved, s.auto, s.confirmed = True, False, True
+        try:
+            s.attach_info(tags.read_file(s.path))
+        except Exception as exc:  # saved, but gone or locked by another program right after
+            pipeline.log_error(f"read after save {s.path}", exc)
+            s.error = "err_open_failed"
+        return "ok", res
+
+    def _save_job(self, states: list[FileState], want_lyrics: bool = False, rename: bool = False) -> None:
+        """Worker thread: never reads Tk variables (the options come in as arguments)."""
+        written: set[int] = set()
         failed: list[str] = []
         broken: list[str] = []
+        errored: list[str] = []
         not_renamed: list[str] = []
         cover_failed = 0
         last_backup = ""
+        looked_up: dict[int, FileState] = {}
+        lyrics_added = 0
+        busy_streak = 0
+        retry: list[FileState] = []
+        total = len(states)
+
+        def record(s: FileState, kind: str, res: pipeline.SaveResult | None) -> bool:
+            nonlocal cover_failed, last_backup
+            if kind == "broken":
+                broken.append(s.name())
+            elif kind == "error":
+                errored.append(s.name())
+            elif kind != "ok" or res is None:
+                failed.append(s.name())
+            else:
+                written.add(id(s))
+                last_backup = os.path.basename(res.backup)
+                if res.rename_failed:
+                    not_renamed.append(s.name())
+                if res.cover_failed:
+                    cover_failed += 1
+                return True
+            return False
+
         for idx, s in enumerate(states, 1):
             if self.cancel_event.is_set():
                 break
-            self._ui(self._set_status, "status_saving", index=idx, total=len(states), name=s.name())
-            self._ui(self.progress.configure, {"value": 100.0 * (idx - 1) / len(states)})
-            try:
-                res = pipeline.save_file(s.path, s.current_tags(), s.load_cover() if s.cover_changed else None,
-                                         self.prefs, rename=self.var_rename.get(), ids=s.pending_ids)
-            except tags.FileLocked:
-                failed.append(s.name())
-                continue
-            except tags.BrokenBackup:
-                broken.append(s.name())
-                continue
-            except Exception:
-                failed.append(s.name())
-                continue
-            if res.rename_failed:
-                not_renamed.append(s.name())
-            s.path = res.path
-            s.attach_info(tags.read_file(s.path))
-            s.cover_key, s.cover_changed, s.pending_ids = None, False, None
-            s.saved, s.auto, s.confirmed = True, False, True
-            last_backup = os.path.basename(res.backup)
-            if res.cover_failed:
-                cover_failed += 1
-            saved += 1
-        self._ui(self._save_done, saved, failed, cover_failed, last_backup, broken, not_renamed)
+            self._ui(self.progress.configure, {"value": 100.0 * (idx - 1) / total})
+            text: str | None = None
+            if want_lyrics and s.lyrics_wanted():
+                looked_up[id(s)] = s
+                if busy_streak >= LYRICS_BUSY_LIMIT:
+                    s.lyrics_status = search_lyrics.BUSY  # the server is down: do not keep knocking
+                else:
+                    self._ui(self._set_status, "status_lyrics", index=idx, total=total, name=s.name())
+                    found = pipeline.find_lyrics(s.current_tags(), s.info.length, cancel=self.cancel_event)
+                    if self.cancel_event.is_set():
+                        s.lyrics_status = ""
+                        break
+                    s.lyrics_status = found.status
+                    busy_streak = busy_streak + 1 if found.status == search_lyrics.BUSY else 0
+                    if found.status == search_lyrics.FOUND:
+                        text = found.text
+                    elif found.status == search_lyrics.BUSY:
+                        retry.append(s)
+            if text is None and not s.dirty():
+                continue  # only lyrics were wanted and none came: the file is not touched
+            self._ui(self._set_status, "status_saving", index=idx, total=total, name=s.name())
+            kind, res = self._write_state(s, text, rename)
+            if record(s, kind, res) and text is not None:
+                lyrics_added += 1
+            elif text is not None:
+                s.lyrics_status = ""  # not written: look again next time
+
+        # one more try for the songs the server was too busy for, unless it looked down
+        if retry and busy_streak < LYRICS_BUSY_LIMIT and not self.cancel_event.is_set():
+            busy_streak = 0
+            for idx, s in enumerate(retry, 1):
+                if self.cancel_event.is_set() or busy_streak >= LYRICS_BUSY_LIMIT:
+                    break
+                self._ui(self._set_status, "status_lyrics_retry", index=idx, total=len(retry), name=s.name())
+                self._ui(self.progress.configure, {"value": 100.0 * (idx - 1) / len(retry)})
+                found = pipeline.find_lyrics(s.current_tags(), s.info.length, cancel=self.cancel_event)
+                if self.cancel_event.is_set():
+                    break
+                s.lyrics_status = found.status
+                busy_streak = busy_streak + 1 if found.status == search_lyrics.BUSY else 0
+                if found.status != search_lyrics.FOUND:
+                    continue
+                # the file was already renamed (or not) in the first pass
+                kind, res = self._write_state(s, found.text, rename=False)
+                if record(s, kind, res):
+                    lyrics_added += 1
+                else:
+                    s.lyrics_status = ""
+        counts = {"added": lyrics_added}
+        for key, status in (("none", search_lyrics.NOT_FOUND), ("busy", search_lyrics.BUSY),
+                            ("inst", search_lyrics.INSTRUMENTAL), ("conflict", search_lyrics.CONFLICT),
+                            ("nolyr", search_lyrics.NO_LYRICS)):
+            counts[key] = sum(1 for st in looked_up.values() if st.lyrics_status == status)
+        self._ui(self._save_done, len(written), failed, cover_failed, last_backup, broken, not_renamed,
+                 counts if want_lyrics and looked_up else None, errored, self.cancel_event.is_set())
 
     def _save_done(self, saved: int, failed: list[str], cover_failed: int, last_backup: str,
-                   broken: list[str] | None = None, not_renamed: list[str] | None = None) -> None:
+                   broken: list[str] | None = None, not_renamed: list[str] | None = None,
+                   lyrics: dict | None = None, errored: list[str] | None = None, cancelled: bool = False) -> None:
         self._refresh_list()
         if self.current is not None:
             self._show_file(self.current)
-        lines = [t("msg_saved", count=saved)]
-        if saved and last_backup:
-            lines.append(t("msg_backup_note", file=last_backup))
-        if cover_failed:
-            lines.append(t("msg_cover_failed"))
-        if not_renamed:
-            lines.append(t("msg_not_renamed") + ": " + ", ".join(not_renamed))
+        # most important first: the status line is one row and a long file name cuts off the end
+        lines = [t("msg_saved", count=saved)] if (saved or not lyrics) else []
+        if cancelled:
+            lines.insert(0, t("status_cancelled"))
+        if lyrics:
+            parts = [t(msg, count=lyrics[key]) for key, msg in (
+                ("added", "msg_lyrics_added"), ("none", "msg_lyrics_none"),
+                ("busy", "msg_lyrics_busy"), ("inst", "msg_lyrics_inst"),
+                ("conflict", "msg_lyrics_conflict"), ("nolyr", "msg_lyrics_nolyrics")) if lyrics.get(key)]
+            if parts:
+                lines.append(t("lbl_lyrics", text=", ".join(parts)))
         if failed:
             lines.append(t("err_readonly") + ": " + ", ".join(failed))
         if broken:
             lines.append(t("err_backup_broken") + ": " + ", ".join(broken))
+        if errored:
+            lines.append(t("err_save_failed") + ": " + ", ".join(errored))
+        if not_renamed:
+            lines.append(t("msg_not_renamed") + ": " + ", ".join(not_renamed))
+        if cover_failed:
+            lines.append(t("msg_cover_failed"))
+        if saved and last_backup:
+            lines.append(t("msg_backup_note", file=last_backup))
         self._set_status_text(" \u00b7 ".join(lines))
         if self._closing:
             return
-        if failed or broken:
+        if failed or broken or errored:
             messagebox.showerror(t("dlg_error"), "\n".join(lines), parent=self.root)
         elif not_renamed:
             messagebox.showwarning(t("dlg_done"), "\n".join(lines), parent=self.root)
@@ -1301,9 +1482,14 @@ class App:
         except tags.FileLocked:
             self._ui(self._set_status, "err_readonly")
             return
-        s.attach_info(tags.read_file(s.path))
+        try:
+            s.attach_info(tags.read_file(s.path))
+        except Exception as exc:  # restored, but the file cannot be read back right now
+            pipeline.log_error(f"read after undo {s.path}", exc)
+            s.error = "err_open_failed"
         s.cover_key, s.cover_changed, s.pending_ids = None, False, None
         s.saved, s.auto, s.confirmed, s.selected = False, False, False, None
+        s.lyrics_status = ""
         self._ui(self._undo_done, s, exact)
 
     def _undo_done(self, s: FileState, exact: bool) -> None:
@@ -1315,10 +1501,54 @@ class App:
     def _save_prefs(self) -> None:
         self.prefs.rename = bool(self.var_rename.get())
         self.prefs.save_alert = bool(self.var_save_alert.get())
+        self.prefs.lyrics = bool(self.var_lyrics.get())
         self.prefs.country = self.var_country.get()
         prefs_mod.save(self.prefs)
 
+    def _on_lyrics_toggle(self) -> None:
+        first_time = self.var_lyrics.get() and not self.prefs.lyrics_notice_seen
+        if first_time:
+            self.prefs.lyrics_notice_seen = True
+        self._save_prefs()
+        self._update_lyrics_info()
+        if first_time:
+            self.show_lyrics_notice()
+
+    def show_lyrics_notice(self) -> None:
+        messagebox.showwarning(t("lyrics_notice_title"), t("lyrics_notice"), parent=self.root)
+
+    def view_lyrics(self) -> None:
+        s = self.current
+        if s is None or not s.has_lyrics or self._busy():
+            return
+        try:
+            text = tags.read_lyrics(s.path)
+        except Exception:
+            self._set_status("err_open_failed", name=s.name())
+            return
+        p = self.px
+        win = tk.Toplevel(self.root)
+        win.title(t("dlg_lyrics_title", name=s.name()))
+        win.transient(self.root)
+        win.configure(bg=BG)
+        win.geometry(f"{p(480)}x{p(580)}")
+        frame = ttk.Frame(win, padding=p(12))
+        frame.pack(fill="both", expand=True)
+        frame.rowconfigure(0, weight=1)
+        frame.columnconfigure(0, weight=1)
+        box = tk.Text(frame, wrap="word", bg=CARD, fg=TEXT, relief="flat", bd=0, highlightthickness=1,
+                      highlightbackground=BORDER, font=self.font_body, padx=p(12), pady=p(10))
+        sb = ttk.Scrollbar(frame, orient="vertical", command=box.yview)
+        box.configure(yscrollcommand=sb.set)
+        box.grid(row=0, column=0, sticky="nsew")
+        sb.grid(row=0, column=1, sticky="ns")
+        box.insert("1.0", text)
+        box.configure(state="disabled")  # shown as it is in the file; edit it in another tool
+        win.bind("<Escape>", lambda _e: win.destroy())
+        win.focus_set()
+
     def _on_country(self, _event=None) -> None:
+        self._country = self.var_country.get()
         self._save_prefs()
 
     def _on_lang(self, _event=None) -> None:

@@ -16,6 +16,7 @@ import match
 import net
 import search_acoustid
 import search_itunes
+import search_lyrics
 import search_mb
 import tags
 from match import Candidate
@@ -232,9 +233,19 @@ def fetch_thumb(cand: Candidate, *, cancel: threading.Event | None = None) -> by
         return None
 
 
+def find_lyrics(new_tags: tags.Tags, length: float, *, cancel: threading.Event | None = None) -> search_lyrics.LyricsResult:
+    """Lyrics for the tags the file is about to get. Never raises: a network
+    problem comes back as BUSY so the tags are still saved."""
+    try:
+        return search_lyrics.find(new_tags.title, new_tags.artist, length, cancel=cancel)
+    except Exception as exc:  # a lyrics problem must never stop a save
+        log_error("lyrics", exc)
+        return search_lyrics.LyricsResult(search_lyrics.BUSY)
+
+
 def save_file(path: str, new_tags: tags.Tags, cover: bytes | None, prefs: Prefs, *, rename: bool | None = None,
-              ids: tags.Ids | None = None) -> SaveResult:
-    """Backup, write tags (+ cover and identity tags if given), optionally rename.
+              ids: tags.Ids | None = None, lyrics: str | None = None) -> SaveResult:
+    """Backup, write tags (+ cover, identity tags and lyrics if given), optionally rename.
     Raises tags.FileLocked or tags.BrokenBackup before anything is written; a failed
     rename after the write is reported in the result, not raised."""
     if not os.access(path, os.W_OK):
@@ -248,7 +259,7 @@ def save_file(path: str, new_tags: tags.Tags, cover: bytes | None, prefs: Prefs,
             prepared, mime = tags.prepare_cover(cover, prefs.cover_max_px)
         except Exception:
             cover_failed = True
-    tags.write_file(path, new_tags, prepared, mime, ids)
+    tags.write_file(path, new_tags, prepared, mime, ids, lyrics=lyrics)
     result = SaveResult(path, backup, cover_failed)
     do_rename = prefs.rename if rename is None else rename
     if do_rename:

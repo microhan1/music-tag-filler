@@ -37,6 +37,7 @@ python main.py
 ```bash
 python main.py song.mp3                      # 列出带编号的候选并询问
 python main.py music_folder --auto --rename  # 匹配度 >= 90 时不询问直接保存，并重命名
+python main.py music_folder --auto --lyrics  # 也为没有歌词的文件写入歌词
 python main.py song.mp3 --undo               # 从备份恢复原始标签
 ```
 
@@ -45,6 +46,33 @@ python main.py song.mp3 --undo               # 从备份恢复原始标签
 exe 也接受相同的参数（`music-tag-filler.exe song.mp3 --auto`）。但它是窗口模式程序，某些环境下控制台不会显示输出；此时请把输出重定向到文件（`> log.txt`）或从源码运行。有参数但没有可输出的控制台时，会打开加载了这些文件的窗口。
 
 测试：`pip install -r requirements-dev.txt`，然后 `python -m pytest tests`。测试素材来自 `samples/` 中的音频。
+
+## 填入歌词
+
+打开选项行中的 **同时填入歌词** 后，保存时会为没有歌词的文件写入歌词。默认关闭。第一次打开时以及按旁边的 **!** 按钮时会显示注意事项。
+
+- 歌词来自 [LRCLIB](https://lrclib.net/)，这是由用户提交的免费歌词库。只发送曲名、歌手和时长。
+- 已有歌词的文件不会被改动。只为歌词而保存的文件如果没找到歌词，不会写入任何内容。
+- 歌词栏里只有 `[COWON S9]`、`[3 LINES]` 这类播放器标记时视为空，会写入歌词。界面上显示“只有标记而非歌词 · 视为空”，“撤销”可恢复原来的标记。找不到歌词时标记保持不变。
+- 本着“宁缺毋错”的原则，只有以下条件全部满足时才写入：
+  - 歌手一致。只有标题相同的其他歌手的歌曲不会被使用。
+  - 版本一致。`Instrumental`、`Off Vocal`、`Karaoke` 或 `TV size` 标记必须两边都有或都没有。伴奏文件根本不会查找。
+  - 时长相差 3 秒以内；如果是带时间标记的歌词，不能超过歌曲结尾。
+  - 该曲已提交的歌词内容彼此一致。同一段文字重复提交只算一份。内容有分歧时不写入。
+  - 同一首日语歌曲既有日语原文记录又有罗马字记录时，使用原文；只有罗马字记录时写入罗马字歌词。
+  - 只有一条记录且没有时间标记、无从比对时，如果歌词相对歌曲时长过长（每秒超过 12 个字），不写入。曾有 87 秒的前奏曲被登记了另一首歌的全部歌词。
+- 只写入不带时间标记的普通歌词。
+- 如果 LRCLIB 上只有标为“无歌词”的记录，则不写入并如实显示。曾见到有歌词的歌曲被这样标记，所以不称其为“伴奏”。
+- 文件信息下方的 **歌词：** 一行显示结果。有歌词时可用 **查看歌词** 查看内容。
+- LRCLIB 服务器经常繁忙。会稍等后再次查询，仍失败时只保存标签并显示“服务器繁忙”。再次保存会重新查找。连续 5 首失败时，本次保存不再查找歌词。
+- “撤销”会恢复到写入歌词之前的文件。
+- 歌词受版权保护。请只用于个人收藏的文件，不要分享含有歌词的文件。
+
+| 格式 | 歌词标签 |
+| --- | --- |
+| mp3 | `USLT`（语言 `und`） |
+| flac · ogg | `LYRICS`（读取时也把其他软件写入的 `UNSYNCEDLYRICS` 视为歌词） |
+| m4a | `©lyr` |
 
 ## 艺术家标识符
 
@@ -84,13 +112,14 @@ exe 也接受相同的参数（`music-tag-filler.exe song.mp3 --auto`）。但�
 | [MusicBrainz](https://musicbrainz.org/) | 歌曲、专辑、发行信息 | [MusicBrainz API 规则](https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting) |
 | [AcoustID](https://acoustid.org/) | 声音指纹 → 录音 ID | [AcoustID 服务条款](https://acoustid.org/webservice) |
 | [Cover Art Archive](https://coverartarchive.org/) | 专辑封面 | [关于 CAA](https://musicbrainz.org/doc/Cover_Art_Archive) |
+| [LRCLIB](https://lrclib.net/) | 歌词（仅在打开选项时） | [API 文档](https://lrclib.net/docs) |
 
 iTunes 韩国商店不销售音乐，搜索结果总是为空，因此所选国家没有结果时会自动改用美国商店。歌名和歌手名按来源返回的原文显示。
 
 ## 不做的事
 
 - 不会把音乐文件上传到任何地方，只发送关键词和声音指纹。
-- 不获取歌词。
+- 只有打开选项时才获取歌词，已有的歌词不会被更改。不生成 `.lrc` 文件（需要时请用 [LRCGET](https://github.com/tranxuanthang/lrcget)）。
 - 没有下载、转换、播放功能。
 - 不关联流媒体账户。
 - 不抓取没有官方 API 的服务（Melon、Bugs、Genie 等）。

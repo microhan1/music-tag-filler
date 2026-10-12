@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 import requests
 
 APP_NAME = "music-tag-filler"
-APP_VERSION = "0.1.8"  # sent in the User-Agent; MusicBrainz asks for the real version — bump with each release
+APP_VERSION = "0.2.0"  # sent in the User-Agent; MusicBrainz asks for the real version — bump with each release
 APP_URL = "https://github.com/microhan1/music-tag-filler"
 USER_AGENT = f"{APP_NAME}/{APP_VERSION} ( {APP_URL} )"
 
@@ -99,6 +99,13 @@ throttle = _Throttle()
 throttle.set_window("itunes.apple.com", 20, 60.0)  # Apple: about 20 requests per minute
 throttle.set_interval("musicbrainz.org", 1.05)  # 1 request per second
 throttle.set_interval("api.acoustid.org", 0.35)  # 3 requests per second
+throttle.set_interval("lrclib.net", 0.3)  # docs: one request at a time, 200-500 ms apart
+
+# Hosts whose 503 means "busy right now" (Retry-After: 1), not "you are too fast".
+# MusicBrainz answers 503 when a client exceeds its rate, so there a 503 slows the
+# host down; LRCLIB answers 503 under load whatever the pace (measured: the same
+# 17-47% at 0.3 s and 1 s gaps), and slowing down for good only made a batch crawl.
+OVERLOAD_503_HOSTS = {"lrclib.net"}
 # coverartarchive.org has no published limit; thumbnails are fetched in parallel
 
 _session: requests.Session | None = None
@@ -135,6 +142,12 @@ def request(method: str, url: str, *, params: dict | None = None, data: dict | N
         except requests.RequestException as exc:
             raise NetworkError(str(exc)) from exc
         if resp.status_code in (429, 503) and attempt < MAX_RETRIES:
+            if resp.status_code == 503 and host in OVERLOAD_503_HOSTS:
+                # back off 1, 2, 4 s for this request only; the host keeps its pace
+                wait = max(_retry_after(resp, default=1.0), float(2 ** attempt))
+                last_wait = wait
+                _sleep(wait, cancel)
+                continue
             wait = _retry_after(resp, default=2.0 * (attempt + 1))
             last_wait = wait
             throttle.slow_down(host, wait)
