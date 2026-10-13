@@ -12,6 +12,7 @@ import dataclasses
 import datetime
 import json
 import threading
+import time
 import urllib.parse
 import urllib.request
 from typing import Callable
@@ -21,6 +22,8 @@ SITE = "https://chaekgalpi.co.kr/"  # the notice only ever opens a page on this 
 TIMEOUT = 4.0
 DELAY_MS = 1500
 MAX_BYTES = 64 * 1024
+POLL_MS = 100  # the Tk thread looks for the worker's result this often
+POLL_GRACE = 6.0  # beyond the request timeout before the Tk thread stops looking
 
 
 @dataclasses.dataclass
@@ -71,25 +74,47 @@ def interpret(data: dict | None, version: str, skipped: str = "") -> UpdateInfo 
     return UpdateInfo(latest, version, url)
 
 
+def _work(box: dict, fetcher: Callable, slug: str, version: str, skipped: str) -> None:
+    """Background thread. It only fills `box`: no Tk object, no callback, nothing that
+    reaches the window. If the window is closed while the request waits, this thread must
+    not hold the last reference to anything Tk - releasing a Tk variable on a thread other
+    than Tk's kills the process ("Tcl_AsyncDelete: async handler deleted by the wrong
+    thread", reproduced in a sibling tool built the same way)."""
+    try:
+        data = fetcher(slug, version)
+        box["result"] = (interpret(data, version, skipped), data is not None)
+    except Exception:
+        box["result"] = (None, False)
+
+
 def check_async(root, slug: str, version: str, prefs, on_result: Callable[[UpdateInfo | None, bool], None], *,
                 fetcher: Callable = fetch, day: str | None = None) -> bool:
     """Schedule one check DELAY_MS after now. on_result(info, answered) runs on the Tk
     thread: `answered` is True when the server replied (the caller records the day then),
-    `info` is set only when a notice should be shown. Returns False when no check is due."""
+    `info` is set only when a notice should be shown. Returns False when no check is due.
+    The Tk thread polls for the worker's result; the worker never touches Tk."""
     if not should_check(prefs, day or today()):
         return False
     skipped = getattr(prefs, "update_check_skipped", "")
+    box: dict = {}
+    deadline = [0.0]
 
-    def work() -> None:
-        data = fetcher(slug, version)
-        info = interpret(data, version, skipped)
+    def poll() -> None:
+        if "result" in box:
+            on_result(*box.pop("result"))
+            return
+        if time.monotonic() > deadline[0]:
+            return  # the request outlived its timeout: give up quietly
         try:
-            root.after(0, lambda: on_result(info, data is not None))
-        except Exception:  # the window was closed meanwhile
+            root.after(POLL_MS, poll)
+        except Exception:  # the window is gone
             pass
 
     def start() -> None:
-        threading.Thread(target=work, name="update-check", daemon=True).start()
+        deadline[0] = time.monotonic() + TIMEOUT + POLL_GRACE
+        threading.Thread(target=_work, args=(box, fetcher, slug, version, skipped),
+                         name="update-check", daemon=True).start()
+        poll()
 
     try:
         root.after(DELAY_MS, start)

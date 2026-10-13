@@ -37,11 +37,11 @@ class FakeRoot:
 @pytest.fixture(autouse=True)
 def inline_threads(monkeypatch):
     class InlineThread:
-        def __init__(self, target, name=None, daemon=None):
-            self.target = target
+        def __init__(self, target, args=(), name=None, daemon=None):
+            self.target, self.args = target, args
 
         def start(self):
-            self.target()
+            self.target(*self.args)
 
     monkeypatch.setattr(uc.threading, "Thread", InlineThread)
 
@@ -180,6 +180,66 @@ def test_only_pages_of_the_tools_site_are_opened(url):
 @pytest.mark.parametrize("latest", ["", "   ", None, 3, "x" * 40])
 def test_odd_versions_show_nothing(latest):
     assert uc.interpret(dict(OK, latest=latest), "0.2.1") is None
+
+
+# ------------------------------------------------------------------ the worker thread never holds Tk
+def test_worker_thread_gets_no_tk_object_or_callback(monkeypatch):
+    """Closing the window while the request waits must not leave the worker holding the last
+    reference to the App or a Tk variable (Tcl_AsyncDelete crash in a sibling tool)."""
+    seen = {}
+
+    class Recorder:
+        def __init__(self, target, args=(), name=None, daemon=None):
+            seen.update(target=target, args=args, daemon=daemon)
+
+        def start(self):
+            seen["target"](*seen["args"])
+
+    monkeypatch.setattr(uc.threading, "Thread", Recorder)
+    root = FakeRoot()
+    results = []
+    on_result = results.append
+
+    def fetcher(slug, version):
+        return OK
+
+    uc.check_async(root, "musictag", "0.2.1", prefs_mod.Prefs(), lambda info, answered: on_result(info),
+                   fetcher=fetcher, day=DAY)
+    assert seen["target"] is uc._work and seen["target"].__closure__ is None  # a module function: holds nothing
+    assert seen["daemon"] is True
+    for arg in seen["args"]:
+        assert arg is not root and arg is not on_result
+        assert not hasattr(arg, "after") and not hasattr(arg, "tk")
+    assert [type(a) for a in seen["args"]] == [dict, type(fetcher), str, str, str]
+    assert len(results) == 1  # the Tk side still got the answer, through polling
+
+
+def test_tk_side_stops_polling_after_the_timeout(monkeypatch):
+    clock = [0.0]
+    monkeypatch.setattr(uc.time, "monotonic", lambda: clock[0])
+
+    class NeverStarts:
+        def __init__(self, target, args=(), name=None, daemon=None):
+            pass
+
+        def start(self):
+            pass  # the request never answers
+
+    monkeypatch.setattr(uc.threading, "Thread", NeverStarts)
+
+    class SteppingRoot:
+        calls = 0
+
+        def after(self, ms, fn):
+            SteppingRoot.calls += 1
+            clock[0] += ms / 1000 if ms != uc.DELAY_MS else 0
+            if SteppingRoot.calls < 1000:
+                fn()
+
+    results = []
+    uc.check_async(SteppingRoot(), "musictag", "0.2.1", prefs_mod.Prefs(), lambda *a: results.append(a),
+                   fetcher=lambda s, v: OK, day=DAY)
+    assert results == [] and SteppingRoot.calls < 1000  # gave up after TIMEOUT + POLL_GRACE
 
 
 # ------------------------------------------------------------------ settings
