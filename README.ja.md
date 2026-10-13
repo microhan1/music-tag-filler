@@ -4,9 +4,9 @@
 
 [한국어](README.md) · [English](README.en.md) · [中文](README.zh-CN.md)
 
-> **ファイルはインターネットに送信されません。** 検索語と音声指紋（数字の列）だけを送ります。
+> **ファイルはインターネットに送信されません。** 検索語と音声指紋（数字の列）だけを送ります。新しいバージョンの確認だけは例外です（ツール名とバージョンのみ、1 日 1 回、設定でオフ）。
 
-タイトル・アーティスト・アルバム・ジャケットが空の mp3 / flac / m4a / ogg をドロップすると、上段にファイル内の情報、下段に iTunes・MusicBrainz・AcoustID で見つかった候補を表示し、選んだ候補をファイルに書き込みます。サーバーなし、インストールなし、保存を押すまでファイルには触れません。
+タイトル・アーティスト・アルバム・ジャケットが空の mp3 / flac / m4a / ogg をドロップすると、上段にファイル内の情報、下段に iTunes・MusicBrainz・AcoustID で見つかった候補を表示し、選んだ候補をファイルに書き込みます。サーバーなし（新しいバージョンの確認だけは例外、オフにできます）、インストールなし、保存を押すまでファイルには触れません。
 
 ![上下二段の画面](docs/screenshot.png)
 
@@ -104,6 +104,16 @@ exe も同じ引数を受け付けます（`music-tag-filler.exe song.mp3 --auto
 - `third_party/fpcalc.exe`（Chromaprint）が必要です。リポジトリに同梱しています。無い場合は [Chromaprint Releases](https://github.com/acoustid/chromaprint/releases) から `chromaprint-fpcalc-*-windows-x86_64.zip` を取得し、`fpcalc.exe` を `third_party/` に置くか、`settings.json` の `fpcalc_path` にパスを書きます。
 - Releases の exe には AcoustID アプリケーションキーが入っているのでそのまま使えます。ソースから実行する場合は [acoustid.org/new-application](https://acoustid.org/new-application) で無料取得したキーを `settings.json` の `acoustid_key` に書くか、1 行の `acoustid_key.txt`（リポジトリには入らない）に置くと build.bat が exe に同梱します。
 
+## 新しいバージョンの確認
+
+起動時に新しいバージョンがあるかを確かめるため、ツール名（`musictag`）とバージョンだけを 책갈피（Chaekgalpi）サーバー（chaekgalpi.co.kr）に送ります。ファイルは送らず、確認は 1 日 1 回だけで、設定でオフにできます（上部の **新しいバージョンを確認**）。確認はウィンドウが開いた後にバックグラウンドで行い、接続できなければ何も表示しません。
+
+新しいバージョンがあると、ウィンドウ下部に 1 行の通知が出ます。**更新** を押すと Chaekgalpi のツールページが開き、**後で** を押すとそのバージョンは再び通知しません（さらに新しいバージョンが出れば通知します）。自動でダウンロードや置き換えはしません。
+
+![新しいバージョンの通知](docs/update_notice.png)
+
+*図: 通知行の画面。サーバーの応答を偽の値（新バージョン 0.3.0）にして表示した試験画面です。*
+
 ## 情報の出典
 
 | 出典 | 用途 | 規約 |
@@ -113,12 +123,14 @@ exe も同じ引数を受け付けます（`music-tag-filler.exe song.mp3 --auto
 | [AcoustID](https://acoustid.org/) | 音声指紋 → 録音 ID | [AcoustID サービス規約](https://acoustid.org/webservice) |
 | [Cover Art Archive](https://coverartarchive.org/) | アルバムジャケット | [CAA について](https://musicbrainz.org/doc/Cover_Art_Archive) |
 | [LRCLIB](https://lrclib.net/) | 歌詞（オプションがオンのときだけ） | [API ドキュメント](https://lrclib.net/docs) |
+| [Chaekgalpi ツール](https://chaekgalpi.co.kr/tools/musictag) | 新しいバージョンの確認（1 日 1 回、オフにできます） | ツール名・バージョン・OS 系統（`win`）だけを送信 |
 
 iTunes 韓国ストアは音楽を販売していないため結果が常に空になります。指定した国で結果が無いときは自動的に米国ストアを使います。曲名・アーティスト名は出典が返した原文のまま表示します。
 
 ## しないこと
 
-- 音楽ファイルをどこにもアップロードしません。検索語と音声指紋だけを送ります。
+- 音楽ファイルをどこにもアップロードしません。検索語と音声指紋だけを送ります。新しいバージョンの確認だけは例外です（ツール名とバージョンのみ、1 日 1 回、設定でオフ）。
+- 新しいバージョンを自動でダウンロードしたり置き換えたりしません。
 - 歌詞はオプションをオンにしたときだけ取得し、既存の歌詞は変えません。`.lrc` ファイルは作りません（必要なら [LRCGET](https://github.com/tranxuanthang/lrcget)）。
 - ダウンロード・変換・再生機能はありません。
 - ストリーミングサービスのアカウント連携はありません。

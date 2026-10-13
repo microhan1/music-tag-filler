@@ -4,9 +4,9 @@
 
 [한국어](README.md) · [English](README.en.md) · [日本語](README.ja.md)
 
-> **文件不会上传到互联网。** 只发送搜索关键词和声音指纹（一串数字）。
+> **文件不会上传到互联网。** 只发送搜索关键词和声音指纹（一串数字）。仅检查新版本例外（只发送工具名和版本，每天一次，可在设置中关闭）。
 
-把缺少标题、歌手、专辑或封面的 mp3 / flac / m4a / ogg 拖进来：上半部分显示文件里已有的信息，下半部分显示从 iTunes、MusicBrainz、AcoustID 找到的候选，选中后写入文件。无服务器，无需安装，按下保存之前不会改动文件。
+把缺少标题、歌手、专辑或封面的 mp3 / flac / m4a / ogg 拖进来：上半部分显示文件里已有的信息，下半部分显示从 iTunes、MusicBrainz、AcoustID 找到的候选，选中后写入文件。无服务器（仅检查新版本例外，可关闭），无需安装，按下保存之前不会改动文件。
 
 ![上下两部分的窗口](docs/screenshot.png)
 
@@ -104,6 +104,16 @@ exe 也接受相同的参数（`music-tag-filler.exe song.mp3 --auto`）。但�
 - 需要 `third_party/fpcalc.exe`（Chromaprint），仓库已附带。若缺失，请从 [Chromaprint Releases](https://github.com/acoustid/chromaprint/releases) 下载 `chromaprint-fpcalc-*-windows-x86_64.zip`，把 `fpcalc.exe` 放入 `third_party/`，或在 `settings.json` 的 `fpcalc_path` 中填写路径。
 - Releases 中的 exe 已内置 AcoustID 应用密钥，可直接使用。从源码运行时，请在 [acoustid.org/new-application](https://acoustid.org/new-application) 免费申请密钥，填入 `settings.json` 的 `acoustid_key`，或写入单行文件 `acoustid_key.txt`（不会提交到仓库），build.bat 会把它打包进 exe。
 
+## 检查新版本
+
+启动时为了确认是否有新版本，只把工具名（`musictag`）和版本发送到 책갈피（Chaekgalpi）服务器（chaekgalpi.co.kr）。不发送任何文件，每天最多检查一次，可在设置中关闭（顶部的 **检查新版本**）。检查在窗口打开后于后台进行，无法连接时不显示任何内容。
+
+有新版本时，窗口底部会出现一行提示。按 **更新** 会打开 Chaekgalpi 的工具页面；按 **以后** 会隐藏提示，该版本不再提醒（有更新的版本时会再次提醒）。不会自动下载或替换。
+
+![新版本提示](docs/update_notice.png)
+
+*图：提示行的界面。截图时使用了伪造的服务器响应（新版本 0.3.0）。*
+
 ## 信息来源
 
 | 来源 | 用途 | 条款 |
@@ -113,12 +123,14 @@ exe 也接受相同的参数（`music-tag-filler.exe song.mp3 --auto`）。但�
 | [AcoustID](https://acoustid.org/) | 声音指纹 → 录音 ID | [AcoustID 服务条款](https://acoustid.org/webservice) |
 | [Cover Art Archive](https://coverartarchive.org/) | 专辑封面 | [关于 CAA](https://musicbrainz.org/doc/Cover_Art_Archive) |
 | [LRCLIB](https://lrclib.net/) | 歌词（仅在打开选项时） | [API 文档](https://lrclib.net/docs) |
+| [Chaekgalpi 工具](https://chaekgalpi.co.kr/tools/musictag) | 检查新版本（每天一次，可关闭） | 只发送工具名、版本和系统类别（`win`） |
 
 iTunes 韩国商店不销售音乐，搜索结果总是为空，因此所选国家没有结果时会自动改用美国商店。歌名和歌手名按来源返回的原文显示。
 
 ## 不做的事
 
-- 不会把音乐文件上传到任何地方，只发送关键词和声音指纹。
+- 不会把音乐文件上传到任何地方，只发送关键词和声音指纹。仅检查新版本例外（只发送工具名和版本，每天一次，可在设置中关闭）。
+- 不会自动下载或替换新版本。
 - 只有打开选项时才获取歌词，已有的歌词不会被更改。不生成 `.lrc` 文件（需要时请用 [LRCGET](https://github.com/tranxuanthang/lrcget)）。
 - 没有下载、转换、播放功能。
 - 不关联流媒体账户。

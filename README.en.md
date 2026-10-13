@@ -4,9 +4,9 @@
 
 [한국어](README.md) · [中文](README.zh-CN.md) · [日本語](README.ja.md)
 
-> **Your files are never uploaded.** Only the search query and an audio fingerprint (a string of numbers) are sent.
+> **Your files are never uploaded.** Only the search query and an audio fingerprint (a string of numbers) are sent. Except the update check (tool name and version only, once a day, can be turned off).
 
-Drop mp3 / flac / m4a / ogg files with missing title, artist, album or cover art. The top half shows what the file contains, the bottom half shows candidates from iTunes, MusicBrainz and AcoustID, and the one you pick is written into the file. No server, no install, nothing is touched before you press Save.
+Drop mp3 / flac / m4a / ogg files with missing title, artist, album or cover art. The top half shows what the file contains, the bottom half shows candidates from iTunes, MusicBrainz and AcoustID, and the one you pick is written into the file. No server (except the update check, which can be turned off), no install, nothing is touched before you press Save.
 
 ![Two-part window](docs/screenshot.png)
 
@@ -104,6 +104,16 @@ Once the tags are filled, [Music Folder Organizer](https://github.com/microhan1/
 - `third_party/fpcalc.exe` (Chromaprint) is bundled in the repository. If missing, download `chromaprint-fpcalc-*-windows-x86_64.zip` from [Chromaprint Releases](https://github.com/acoustid/chromaprint/releases) and put `fpcalc.exe` in `third_party/`, or set `fpcalc_path` in `settings.json`.
 - The exe from Releases carries an AcoustID application key and works as is. When running from source, register a free key at [acoustid.org/new-application](https://acoustid.org/new-application) and put it in `acoustid_key` in `settings.json`, or in a one-line `acoustid_key.txt` (never committed) that build.bat bundles into the exe.
 
+## Update check
+
+To see whether a newer version exists, the app sends only the tool name (`musictag`) and its version to the 책갈피 (Chaekgalpi) server, chaekgalpi.co.kr, when it starts. No file is sent, it checks at most once a day, and it can be turned off (the **Check for updates** box at the top). The check runs in the background after the window opens; without a connection nothing is shown.
+
+When a newer version exists, a one-line notice appears at the bottom of the window. **Update** opens the tool's page on the Chaekgalpi site; **Later** hides it and that version is not mentioned again (a newer one is). Nothing is downloaded or replaced automatically.
+
+![Update notice](docs/update_notice.png)
+
+*Picture: the notice line, shown with a fake server answer (version 0.3.0) for this screenshot.*
+
 ## Data sources
 
 | Source | Used for | Terms |
@@ -113,12 +123,14 @@ Once the tags are filled, [Music Folder Organizer](https://github.com/microhan1/
 | [AcoustID](https://acoustid.org/) | fingerprint → recording ID | [AcoustID web service terms](https://acoustid.org/webservice) |
 | [Cover Art Archive](https://coverartarchive.org/) | album covers | [About the CAA](https://musicbrainz.org/doc/Cover_Art_Archive) |
 | [LRCLIB](https://lrclib.net/) | lyrics (only when the option is on) | [API docs](https://lrclib.net/docs) |
+| [Chaekgalpi tools](https://chaekgalpi.co.kr/tools/musictag) | update check (once a day, can be turned off) | sends only the tool name, version and OS family (`win`) |
 
 The Korean iTunes storefront sells no music and returns nothing, so when the chosen country has no results the US store is tried automatically. Titles and artist names are shown exactly as the source returns them.
 
 ## What it does not do
 
-- Never uploads a music file anywhere. Only the query and the fingerprint are sent.
+- Never uploads a music file anywhere. Only the query and the fingerprint are sent. Except the update check (tool name and version only, once a day, can be turned off).
+- Never downloads or replaces itself.
 - Lyrics only when the option is on, and existing lyrics are never changed. No `.lrc` files (use [LRCGET](https://github.com/tranxuanthang/lrcget) for those).
 - No downloading, converting or playing music.
 - No streaming-service accounts.

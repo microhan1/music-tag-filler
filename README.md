@@ -4,9 +4,9 @@
 
 [English](README.en.md) · [中文](README.zh-CN.md) · [日本語](README.ja.md)
 
-> **파일은 인터넷으로 올라가지 않습니다.** 검색어와 음향 지문(숫자 열)만 보냅니다.
+> **파일은 인터넷으로 올라가지 않습니다.** 검색어와 음향 지문(숫자 열)만 보냅니다. 새 버전 확인만 예외(도구 이름·버전만, 하루 한 번, 설정에서 끔).
 
-제목·가수·앨범·표지가 비어 있는 mp3·flac·m4a·ogg를 끌어다 놓으면, 위쪽에 파일에 든 정보를, 아래쪽에 iTunes·MusicBrainz·AcoustID에서 찾은 후보를 보여 주고, 고른 후보를 파일에 써 넣습니다. 서버 없음, 설치 없음, 저장 전에는 파일을 건드리지 않음.
+제목·가수·앨범·표지가 비어 있는 mp3·flac·m4a·ogg를 끌어다 놓으면, 위쪽에 파일에 든 정보를, 아래쪽에 iTunes·MusicBrainz·AcoustID에서 찾은 후보를 보여 주고, 고른 후보를 파일에 써 넣습니다. 서버 없음(새 버전 확인만 예외, 끌 수 있음), 설치 없음, 저장 전에는 파일을 건드리지 않음.
 
 ![위·아래 두 파트 화면](docs/screenshot.png)
 
@@ -104,6 +104,16 @@ exe도 같은 인자를 받습니다(`music-tag-filler.exe song.mp3 --auto`). �
 - `third_party/fpcalc.exe`(Chromaprint)가 필요합니다. 저장소에 동봉되어 있고, 없으면 [Chromaprint Releases](https://github.com/acoustid/chromaprint/releases)에서 `chromaprint-fpcalc-*-windows-x86_64.zip`을 받아 `fpcalc.exe`를 `third_party/`에 넣거나 `settings.json`의 `fpcalc_path`에 경로를 적습니다.
 - Releases의 exe에는 AcoustID 애플리케이션 키가 들어 있어 바로 됩니다. 소스로 실행할 때는 [acoustid.org/new-application](https://acoustid.org/new-application)에서 무료로 키를 발급받아 `settings.json`의 `acoustid_key`에 적거나, `acoustid_key.txt`(저장소에 올라가지 않음)에 한 줄로 넣어 두면 build.bat이 exe에 함께 넣습니다.
 
+## 새 버전 확인
+
+실행할 때 새 버전이 있는지 확인하려고 도구 이름(`musictag`)과 버전만 책갈피 서버(chaekgalpi.co.kr)에 보냅니다. 파일은 보내지 않고, 하루 한 번만 확인하며, 설정에서 끌 수 있습니다(위쪽 **새 버전 확인** 체크). 확인은 창이 뜬 뒤 백그라운드에서 하고, 연결이 안 되면 아무것도 표시하지 않습니다.
+
+새 버전이 있으면 창 아래에 한 줄 알림이 나옵니다. **업데이트**를 누르면 책갈피 툴 페이지가 열리고, **다음에**를 누르면 그 버전은 다시 알리지 않습니다(더 새 버전이 나오면 다시 알림). 자동으로 내려받거나 바꾸지 않습니다.
+
+![새 버전 알림 줄](docs/update_notice.png)
+
+*그림: 알림 줄 화면. 서버 응답을 가짜(새 버전 0.3.0)로 넣어 띄운 시험 화면입니다.*
+
 ## 정보 출처
 
 | 출처 | 용도 | 약관 |
@@ -113,12 +123,14 @@ exe도 같은 인자를 받습니다(`music-tag-filler.exe song.mp3 --auto`). �
 | [AcoustID](https://acoustid.org/) | 음향 지문 → 녹음 ID | [AcoustID 서비스 약관](https://acoustid.org/webservice) |
 | [Cover Art Archive](https://coverartarchive.org/) | 앨범 표지 | [CAA 소개](https://musicbrainz.org/doc/Cover_Art_Archive) |
 | [LRCLIB](https://lrclib.net/) | 가사 (옵션을 켰을 때만) | [API 문서](https://lrclib.net/docs) |
+| [책갈피 툴](https://chaekgalpi.co.kr/tools/musictag) | 새 버전 확인 (하루 한 번, 끌 수 있음) | 도구 이름·버전·OS 계열(`win`)만 보냄 |
 
 iTunes 한국 스토어에는 음원 판매가 없어 검색 결과가 비므로, 지정한 국가에서 결과가 없으면 미국 스토어로 자동 폴백합니다. 검색 결과의 곡명·가수명은 출처가 준 원문 그대로 보여 줍니다.
 
 ## 하지 않는 것
 
-- 음악 파일을 어디에도 올리지 않습니다. 검색어와 음향 지문(숫자 열)만 보냅니다.
+- 음악 파일을 어디에도 올리지 않습니다. 검색어와 음향 지문(숫자 열)만 보냅니다. 새 버전 확인만 예외(도구 이름·버전만, 하루 한 번, 설정에서 끔).
+- 새 버전을 자동으로 내려받거나 바꾸지 않습니다.
 - 가사는 옵션을 켰을 때만 가져오고, 이미 있는 가사는 바꾸지 않습니다. `.lrc` 파일은 만들지 않습니다(필요하면 [LRCGET](https://github.com/tranxuanthang/lrcget)).
 - 음원 다운로드·변환·재생 기능은 없습니다.
 - 스트리밍 서비스 계정 연동은 없습니다.

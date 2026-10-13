@@ -20,6 +20,9 @@ class Prefs:
     save_alert: bool = False  # pop up a dialog after saving; the status line always reports
     lyrics: bool = False  # look lyrics up on LRCLIB when saving a file that has none
     lyrics_notice_seen: bool = False  # the cautions are shown once when lyrics is first turned on
+    update_check: bool = True  # once a day, ask the tools site whether a newer version exists
+    update_check_last: str = ""  # YYYY-MM-DD of the last check the server answered
+    update_check_skipped: str = ""  # "Later" was pressed for this version: do not show it again
     cover_max_px: int = 1000
     # "original": the artist name as the source credits it; "latin": a Latin-script
     # name when MusicBrainz clearly provides one (IDs are written either way)
@@ -48,6 +51,9 @@ def load() -> Prefs:
         save_alert=typed("save_alert", bool),
         lyrics=typed("lyrics", bool),
         lyrics_notice_seen=typed("lyrics_notice_seen", bool),
+        update_check=typed("update_check", bool),
+        update_check_last=typed("update_check_last", str).strip()[:10],
+        update_check_skipped=typed("update_check_skipped", str).strip()[:32],
         cover_max_px=typed("cover_max_px", int),
         artist_name_preference=typed("artist_name_preference", str).strip().lower(),
     )

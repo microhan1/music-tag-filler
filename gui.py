@@ -12,6 +12,7 @@ import sys
 import tempfile
 import threading
 import tkinter as tk
+import webbrowser
 from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
 
@@ -27,6 +28,7 @@ import match
 from match import Candidate
 import search_itunes
 import search_lyrics
+import update_check
 from search_itunes import COUNTRIES
 
 try:
@@ -59,6 +61,9 @@ NORMAL_BG = CARD
 AUTO_FG = "#9ca3af"
 DONE_FG = "#15803d"
 NOTICE = "#d97706"
+UPDATE_BG = "#eff6ff"
+UPDATE_BORDER = "#bfdbfe"
+UPDATE_SLUG = "musictag"  # the tool's name on the 책갈피 tools site
 NOTICE_DARK = "#b45309"
 GOOD_FG = "#15803d"
 FAIR_FG = "#b45309"
@@ -267,6 +272,8 @@ class App:
         self.var_rename = tk.BooleanVar(value=self.prefs.rename)
         self.var_save_alert = tk.BooleanVar(value=self.prefs.save_alert)
         self.var_lyrics = tk.BooleanVar(value=self.prefs.lyrics)
+        self.var_update_check = tk.BooleanVar(value=self.prefs.update_check)
+        self._update_info: update_check.UpdateInfo | None = None
         self.var_query = tk.StringVar()
         self.var_fields = {f: tk.StringVar() for f in tags.FIELDS}
 
@@ -276,6 +283,8 @@ class App:
         self._show_file(None)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         threading.Thread(target=self._probe_online, daemon=True).start()
+        # once a day, 1.5 s after the window is up, on a background thread; silent on any failure
+        update_check.check_async(self.root, UPDATE_SLUG, net.APP_VERSION, self.prefs, self._on_update_result)
         if initial_files:
             self.root.after(100, lambda: self.add_paths(initial_files))
 
@@ -403,6 +412,9 @@ class App:
         self.cmb_lang = ttk.Combobox(head, state="readonly", width=10, textvariable=self.var_lang,
                                      values=[i18n.LANG_NAMES[c] for c in i18n.LANGS])
         self.cmb_lang.grid(row=0, column=5)
+        self.chk_update = self._reg(ttk.Checkbutton(head, variable=self.var_update_check, command=self._on_update_toggle),
+                                    "opt_update_check")
+        self.chk_update.grid(row=0, column=6, padx=(p(14), 0))
         self.cmb_lang.bind("<<ComboboxSelected>>", self._on_lang)
 
         # ---- top / bottom split
@@ -550,6 +562,16 @@ class App:
         self.lbl_mem.grid(row=1, column=6, sticky="e", padx=(p(10), 0), pady=(p(10), 0))
         self.root.after(1000, self._tick_memory)
 
+        # ---- one-line "new version" notice under the action bar (gridded only when there is one)
+        self.frm_update = tk.Frame(root, bg=UPDATE_BG, highlightthickness=1, highlightbackground=UPDATE_BORDER)
+        self.lbl_update = tk.Label(self.frm_update, bg=UPDATE_BG, fg=TEXT, font=self.font_body, anchor="w")
+        self.lbl_update.pack(side="left", fill="x", expand=True, padx=(p(12), p(8)), pady=p(6))
+        self.btn_update_later = self._reg(ttk.Button(self.frm_update, command=self._update_later), "btn_later")
+        self.btn_update_later.pack(side="right", padx=(p(6), p(10)), pady=p(5))
+        self.btn_update_open = self._reg(ttk.Button(self.frm_update, command=self._update_open, style="Accent.TButton"),
+                                         "btn_update")
+        self.btn_update_open.pack(side="right", pady=p(5))
+
         if _HAS_DND:
             for w in (root, self.lst_files, self.tree, self.lbl_cover):
                 w.drop_target_register(DND_FILES)
@@ -569,6 +591,8 @@ class App:
         self._update_file_info()
         if self._status_key:
             self._set_status(self._status_key, **self._status_kwargs)
+        if getattr(self, "_update_info", None) is not None:
+            self._show_update_notice()
 
     # ------------------------------------------------------------ helpers
     def _tick_memory(self) -> None:
@@ -1502,8 +1526,71 @@ class App:
         self.prefs.rename = bool(self.var_rename.get())
         self.prefs.save_alert = bool(self.var_save_alert.get())
         self.prefs.lyrics = bool(self.var_lyrics.get())
+        self.prefs.update_check = bool(self.var_update_check.get())
         self.prefs.country = self.var_country.get()
         prefs_mod.save(self.prefs)
+
+    # ------------------------------------------------------------ new version notice
+    def _on_update_result(self, info: update_check.UpdateInfo | None, answered: bool) -> None:
+        """Tk thread. The day is recorded only when the server answered, so an offline
+        start asks again next time."""
+        if self._closing:
+            return
+        if answered:
+            self.prefs.update_check_last = update_check.today()
+            self._save_prefs()
+        if info is not None and self.var_update_check.get():
+            self._update_info = info
+            self._show_update_notice()
+
+    def _show_update_notice(self) -> None:
+        info = self._update_info
+        if info is None:
+            self.frm_update.grid_remove()
+            return
+        self.lbl_update.configure(text=t("update_available", latest=info.latest, current=info.current))
+        if self.frm_update.winfo_manager():
+            return
+        # The row takes height from the split pane, which gives it up from the top: without
+        # this the file-info pane collapsed to nothing when the notice appeared.
+        try:
+            sash = self.paned.sashpos(0)
+        except tk.TclError:
+            sash = self.px(TOP_PANE_PX)
+        self.frm_update.grid(row=3, column=0, sticky="ew", padx=self.px(16), pady=(0, self.px(10)))
+        self.root.after_idle(lambda: self._restore_sash(sash))
+
+    def _restore_sash(self, pos: int) -> None:
+        try:
+            # back where it was; a position that small means the pane had not been laid out yet
+            self.paned.sashpos(0, pos if pos > self.px(150) else self.px(TOP_PANE_PX))
+        except tk.TclError:
+            pass
+
+    def _hide_update_notice(self) -> None:
+        self._update_info = None
+        self.frm_update.grid_remove()
+
+    def _update_open(self) -> None:
+        """The tools page, never a download: the site counts and serves the download."""
+        info = self._update_info
+        if info is not None and info.url.startswith(update_check.SITE):
+            try:
+                webbrowser.open(info.url)
+            except Exception:
+                pass
+        self._hide_update_notice()
+
+    def _update_later(self) -> None:
+        if self._update_info is not None:
+            self.prefs.update_check_skipped = self._update_info.latest  # a newer one is shown again
+            self._save_prefs()
+        self._hide_update_notice()
+
+    def _on_update_toggle(self) -> None:
+        self._save_prefs()
+        if not self.var_update_check.get():
+            self._hide_update_notice()
 
     def _on_lyrics_toggle(self) -> None:
         first_time = self.var_lyrics.get() and not self.prefs.lyrics_notice_seen
