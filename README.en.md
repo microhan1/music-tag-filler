@@ -123,7 +123,7 @@ When a newer version exists, a one-line notice appears at the bottom of the wind
 | [AcoustID](https://acoustid.org/) | fingerprint → recording ID | [AcoustID web service terms](https://acoustid.org/webservice) |
 | [Cover Art Archive](https://coverartarchive.org/) | album covers | [About the CAA](https://musicbrainz.org/doc/Cover_Art_Archive) |
 | [LRCLIB](https://lrclib.net/) | lyrics (only when the option is on) | [API docs](https://lrclib.net/docs) |
-| [Chaekgalpi tools](https://chaekgalpi.co.kr/tools/musictag) | update check (once a day, can be turned off) | sends only the tool name, version and OS family (`win`) |
+| [Chaekgalpi tools](https://chaekgalpi.co.kr/en/tools/musictag?utm_source=github&utm_medium=referral&utm_campaign=tool_cta&utm_content=musictag) | update check (once a day, can be turned off) | sends only the tool name, version and OS family (`win`) |
 
 The Korean iTunes storefront sells no music and returns nothing, so when the chosen country has no results the US store is tried automatically. Titles and artist names are shown exactly as the source returns them.
 
