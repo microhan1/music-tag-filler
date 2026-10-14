@@ -182,6 +182,40 @@ def test_odd_versions_show_nothing(latest):
     assert uc.interpret(dict(OK, latest=latest), "0.2.1") is None
 
 
+# ------------------------------------------------------------------ which page [Update] opens
+EN = "https://chaekgalpi.co.kr/en/tools/musictag?utm_source=app&utm_medium=update"
+MISSING = object()
+
+
+@pytest.mark.parametrize("lang,url_en,expected", [
+    ("ko", EN, OK["url"]),                       # Korean screen: the Korean page
+    ("en", EN, EN),                              # other screens: the English page when given
+    ("ja", EN, EN),
+    ("zh-CN", EN, EN),
+    ("en", None, OK["url"]),                     # not given yet (server before v1.96)
+    ("en", MISSING, OK["url"]),
+    ("en", "https://example.com/en/tools/musictag", OK["url"]),  # never a page off the tools site
+    ("en", "http://chaekgalpi.co.kr/en/tools/musictag", OK["url"]),
+    ("en", 5, OK["url"]),
+])
+def test_update_opens_the_page_for_the_screen_language(lang, url_en, expected):
+    data = dict(OK) if url_en is MISSING else dict(OK, urlEn=url_en)
+    info = uc.interpret(data, "0.2.2")
+    assert uc.link_for(info, lang) == expected
+
+
+def test_request_is_unchanged_by_the_english_page():
+    # urlEn is only read from the answer; nothing new is sent
+    seen = {}
+
+    def opener(req, timeout):
+        seen["query"] = urllib.parse.urlsplit(req.full_url).query
+        return FakeResp(json.dumps(dict(OK, urlEn=EN)).encode())
+
+    uc.fetch("musictag", "0.2.2", opener=opener)
+    assert urllib.parse.parse_qs(seen["query"]) == {"v": ["0.2.2"], "os": ["win"]}
+
+
 # ------------------------------------------------------------------ the worker thread never holds Tk
 def test_worker_thread_gets_no_tk_object_or_callback(monkeypatch):
     """Closing the window while the request waits must not leave the worker holding the last

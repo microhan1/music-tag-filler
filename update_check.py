@@ -30,7 +30,8 @@ POLL_GRACE = 6.0  # beyond the request timeout before the Tk thread stops lookin
 class UpdateInfo:
     latest: str
     current: str
-    url: str
+    url: str  # the tool's page (Korean)
+    url_en: str = ""  # the English page when the server gives one on the tools site, else ""
 
 
 def today() -> str:
@@ -71,7 +72,17 @@ def interpret(data: dict | None, version: str, skipped: str = "") -> UpdateInfo 
     latest = latest.strip()
     if latest == (skipped or "").strip():
         return None
-    return UpdateInfo(latest, version, url)
+    url_en = data.get("urlEn")
+    url_en = url_en if isinstance(url_en, str) and url_en.startswith(SITE) else ""
+    return UpdateInfo(latest, version, url, url_en)
+
+
+def link_for(info: UpdateInfo, lang: str) -> str:
+    """The page [Update] opens: the Korean page on a Korean screen, the English page on any
+    other screen when the server gave one on the tools site, otherwise the Korean page."""
+    if lang != "ko" and info.url_en.startswith(SITE):
+        return info.url_en
+    return info.url
 
 
 def _work(box: dict, fetcher: Callable, slug: str, version: str, skipped: str) -> None:
