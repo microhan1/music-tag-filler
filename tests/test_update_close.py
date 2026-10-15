@@ -25,6 +25,10 @@ CHILD = textwrap.dedent(r"""
     import net
     net.online = lambda *a, **k: True
     import update_check
+    sys.path.insert(0, os.path.join({root!r}, "tests"))
+    import update_guard
+    guard = update_guard.make_opener()
+    update_guard.install(update_check, guard)  # this child is outside conftest's reach
     orig = update_check.check_async
 
     def slow(slug, version):
@@ -46,6 +50,7 @@ CHILD = textwrap.dedent(r"""
             t.join(10)
     gc.collect()
     time.sleep(0.5)
+    print("LEAKS", len(guard.calls), flush=True)
     print("SURVIVED", flush=True)
 """)
 
@@ -59,3 +64,4 @@ def test_closing_during_the_check_does_not_crash(attempt):
     assert proc.returncode == 0, proc.stderr[-800:]
     assert "SURVIVED" in proc.stdout
     assert "Tcl_AsyncDelete" not in proc.stderr
+    assert "LEAKS 0" in proc.stdout  # nothing tried to reach the update server
