@@ -143,6 +143,14 @@ iTunes 韓国ストアは音楽を販売していないため結果が常に空�
 - iTunes 検索を併用し、K-POP・J-POP・中華圏の音楽とジャケットに強いです。
 - 韓国語 UI が既定で、英語・中国語・日本語にすぐ切り替えられます。
 
+## ご意見を送る
+
+不具合・使いにくい点・欲しい機能は、ウィンドウ上部の **ご意見を送る** を押すか、[chaekgalpi.co.kr/tools/musictag#feedback](https://chaekgalpi.co.kr/tools/musictag#feedback) からログインなしで送れます。ボタンはそのページをブラウザで開くだけで、プログラム自身は何も送信しません。[GitHub Issues](https://github.com/microhan1/music-tag-filler/issues) もこれまでどおり受け付けています。
+
+![上部の行にある「ご意見を送る」ボタン](docs/feedback_button.png)
+
+*図：ウィンドウ上部の行（韓国語画面）。「새 버전 확인」（新しいバージョンを確認）の右が **ご意見を送る** ボタンです。*
+
 ## ライセンス
 
 MIT。[LICENSE](LICENSE) 参照。

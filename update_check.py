@@ -85,6 +85,23 @@ def link_for(info: UpdateInfo, lang: str) -> str:
     return info.url
 
 
+FEEDBACK_PAGE = SITE + "{prefix}tools/{slug}"
+FEEDBACK_EN = ("en", "ja", "zh-cn")  # the site has no Japanese or Chinese page: English for those
+
+
+def feedback_url(slug: str, version: str | None, lang: str | None) -> str:
+    """The tool page's "send feedback" box (#feedback), opened in the browser. Built only
+    from constants and the running version - nothing from settings or the server. The
+    English page for en/ja/zh-CN screens, the Korean page otherwise. utm_source=app is how
+    the site's admin page tells the Windows program apart; v is left out when empty."""
+    code = (lang or "").strip().replace("_", "-").lower()
+    page = FEEDBACK_PAGE.format(prefix="en/" if code in FEEDBACK_EN else "", slug=slug)
+    query = "utm_source=app&utm_medium=feedback"
+    if version is not None and str(version).strip():
+        query += "&v=" + urllib.parse.quote(str(version), safe="")
+    return f"{page}?{query}#feedback"
+
+
 def _work(box: dict, fetcher: Callable, slug: str, version: str, skipped: str) -> None:
     """Background thread. It only fills `box`: no Tk object, no callback, nothing that
     reaches the window. If the window is closed while the request waits, this thread must

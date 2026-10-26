@@ -143,6 +143,14 @@ iTunes 韩国商店不销售音乐，搜索结果总是为空，因此所选国�
 - 同时使用 iTunes 搜索，对韩语、日语、华语音乐和封面更有效。
 - 默认韩语界面，可随时切换为英语、中文、日语。
 
+## 发送反馈
+
+遇到问题、用着不顺手或想要新功能，可以点窗口顶部的 **发送反馈**，或在 [chaekgalpi.co.kr/tools/musictag#feedback](https://chaekgalpi.co.kr/tools/musictag#feedback) 提交，无需登录。按钮只是在浏览器中打开那个页面，程序本身不发送任何内容。[GitHub Issues](https://github.com/microhan1/music-tag-filler/issues) 也照常受理。
+
+![顶部一行中的“发送反馈”按钮](docs/feedback_button.png)
+
+*图：窗口顶部一行（韩语界面）。「새 버전 확인」（检查新版本）右边就是 **发送反馈** 按钮。*
+
 ## 许可证
 
 MIT，见 [LICENSE](LICENSE)。

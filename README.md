@@ -143,6 +143,14 @@ iTunes 한국 스토어에는 음원 판매가 없어 검색 결과가 비므로
 - iTunes 검색을 함께 써서 가요·J-POP·중화권 음악과 표지에 강합니다.
 - 한국어 UI가 기본이고 영어·중국어·일본어로 바로 바꿀 수 있습니다.
 
+## 의견 보내기
+
+안 되는 것·불편한 것·바라는 기능은 프로그램 위쪽의 **의견 보내기**를 누르거나 [chaekgalpi.co.kr/tools/musictag#feedback](https://chaekgalpi.co.kr/tools/musictag#feedback)에서 로그인 없이 보낼 수 있습니다. 버튼은 그 페이지를 브라우저로 열기만 하고, 프로그램이 직접 보내는 것은 없습니다. [GitHub Issues](https://github.com/microhan1/music-tag-filler/issues)도 그대로 받습니다.
+
+![위쪽 줄의 의견 보내기 버튼](docs/feedback_button.png)
+
+*그림: 창 위쪽 줄. 「새 버전 확인」 오른쪽이 **의견 보내기** 버튼입니다.*
+
 ## 라이선스
 
 MIT. [LICENSE](LICENSE) 참조.

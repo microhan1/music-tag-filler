@@ -143,6 +143,14 @@ The Korean iTunes storefront sells no music and returns nothing, so when the cho
 - iTunes search alongside MusicBrainz makes it strong for K-pop, J-pop, Chinese music and cover art.
 - Korean UI by default, switchable to English, Chinese and Japanese.
 
+## Send feedback
+
+Tell us what's broken, awkward or missing with **Send feedback** at the top of the window, or at [chaekgalpi.co.kr/en/tools/musictag#feedback](https://chaekgalpi.co.kr/en/tools/musictag#feedback) — no sign-in needed. The button only opens that page in your browser; the app itself sends nothing. [GitHub Issues](https://github.com/microhan1/music-tag-filler/issues) are welcome as before.
+
+![The Send feedback button in the top row](docs/feedback_button.png)
+
+*Picture: the top row of the window (Korean screen). The button right of 「새 버전 확인」 (Check for updates) is **Send feedback**.*
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

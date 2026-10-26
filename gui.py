@@ -274,6 +274,7 @@ class App:
         self.var_lyrics = tk.BooleanVar(value=self.prefs.lyrics)
         self.var_update_check = tk.BooleanVar(value=self.prefs.update_check)
         self._update_info: update_check.UpdateInfo | None = None
+        self._feedback_win: tk.Toplevel | None = None  # the address to copy when no browser opened
         self.var_query = tk.StringVar()
         self.var_fields = {f: tk.StringVar() for f in tags.FIELDS}
 
@@ -403,7 +404,9 @@ class App:
         head.columnconfigure(1, weight=1)
         self._reg(ttk.Label(head, style="Title.TLabel"), "app_title").grid(row=0, column=0, sticky="w")
         self.lbl_drop = ttk.Label(head, style="Muted.TLabel")
-        self._reg(self.lbl_drop, "drop_hint").grid(row=0, column=1, sticky="w", padx=(p(16), 0))
+        # the header row is full at the smallest window: the hint shortens itself with "…"
+        self.lbl_drop.grid(row=0, column=1, sticky="ew", padx=(p(16), p(12)))
+        self.lbl_drop.bind("<Configure>", lambda _e: self._fit_drop_hint())
         self._reg(ttk.Label(head, style="Muted.TLabel"), "country_label").grid(row=0, column=2, padx=(0, p(6)))
         self.cmb_country = ttk.Combobox(head, state="readonly", width=5, textvariable=self.var_country, values=list(COUNTRIES))
         self.cmb_country.grid(row=0, column=3, padx=(0, p(18)))
@@ -415,6 +418,9 @@ class App:
         self.chk_update = self._reg(ttk.Checkbutton(head, variable=self.var_update_check, command=self._on_update_toggle),
                                     "opt_update_check")
         self.chk_update.grid(row=0, column=6, padx=(p(14), 0))
+        self.btn_feedback = self._reg(ttk.Button(head, command=self.open_feedback, style="Small.TButton"),
+                                      "btn_feedback")
+        self.btn_feedback.grid(row=0, column=7, padx=(p(10), 0))
         self.cmb_lang.bind("<<ComboboxSelected>>", self._on_lang)
 
         # ---- top / bottom split
@@ -588,11 +594,23 @@ class App:
                         "year": "field_year", "source": "col_source", "match": "col_match"}
         for col, key in heading_keys.items():
             self.tree.heading(col, text=t(key))
+        self._fit_drop_hint()
         self._update_file_info()
         if self._status_key:
             self._set_status(self._status_key, **self._status_kwargs)
         if getattr(self, "_update_info", None) is not None:
             self._show_update_notice()
+
+    def _fit_drop_hint(self) -> None:
+        full = t("drop_hint")
+        width = self.lbl_drop.winfo_width()
+        text = full
+        if width > 1 and self.font_body.measure(full) > width:
+            while text and self.font_body.measure(text.rstrip() + "…") > width:
+                text = text[:-1]
+            text = text.rstrip() + "…" if text else ""
+        if self.lbl_drop.cget("text") != text:
+            self.lbl_drop.configure(text=text)
 
     # ------------------------------------------------------------ helpers
     def _tick_memory(self) -> None:
@@ -1593,6 +1611,52 @@ class App:
         self._save_prefs()
         if not self.var_update_check.get():
             self._hide_update_notice()
+
+    # ------------------------------------------------------------ feedback
+    def open_feedback(self) -> None:
+        """The tool page's feedback box in the browser. Nothing is sent from here; when no
+        browser opens, the address is shown so it can be copied."""
+        url = update_check.feedback_url(UPDATE_SLUG, net.APP_VERSION, i18n.current_lang())
+        try:
+            opened = webbrowser.open(url)
+        except Exception:  # webbrowser.Error, OSError, ...
+            opened = False
+        if not opened:
+            self._show_feedback_address(url)
+
+    def _show_feedback_address(self, url: str) -> None:
+        p = self.px
+        win = tk.Toplevel(self.root)
+        win.title(t("feedback_failed_title"))
+        win.transient(self.root)
+        win.configure(bg=BG)
+        win.resizable(False, False)
+        frame = ttk.Frame(win, padding=p(14))
+        frame.pack(fill="both", expand=True)
+        frame.columnconfigure(0, weight=1)
+        ttk.Label(frame, text=t("feedback_failed"), wraplength=p(440), justify="left").grid(
+            row=0, column=0, columnspan=3, sticky="w")
+        var = tk.StringVar(value=url)
+        entry = self._entry(frame, var)
+        entry.configure(state="readonly", readonlybackground=CARD, width=60)
+        entry.grid(row=1, column=0, sticky="ew", pady=(p(10), 0))
+
+        def copy() -> None:
+            try:
+                win.clipboard_clear()
+                win.clipboard_append(url)
+                btn_copy.configure(text=t("btn_copied"))
+            except tk.TclError:
+                pass
+
+        btn_copy = ttk.Button(frame, text=t("btn_copy"), command=copy)
+        btn_copy.grid(row=1, column=1, padx=(p(8), 0), pady=(p(10), 0))
+        ttk.Button(frame, text=t("btn_close"), command=win.destroy).grid(row=1, column=2, padx=(p(6), 0),
+                                                                        pady=(p(10), 0))
+        entry.select_range(0, "end")
+        entry.focus_set()
+        win.bind("<Escape>", lambda _e: win.destroy())
+        self._feedback_win = win
 
     def _on_lyrics_toggle(self) -> None:
         first_time = self.var_lyrics.get() and not self.prefs.lyrics_notice_seen
