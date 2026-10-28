@@ -32,8 +32,10 @@ def test_address_for_each_language(lang, expected):
 
 
 @pytest.mark.parametrize("lang", [None, "", "fr", "de", "zh-TW", "zh", "xx-YY", "  "])
-def test_unknown_language_gets_the_korean_page(lang):
-    assert uc.feedback_url("musictag", "0.2.4", lang) == KO
+def test_other_or_missing_language_gets_the_english_page(lang):
+    """Only Korean gets the Korean page (2026-10-28 series rule); no language means the
+    program's default screen language, English."""
+    assert uc.feedback_url("musictag", "0.2.4", lang) == EN
 
 
 @pytest.mark.parametrize("lang, expected", [("EN", EN), ("En", EN), ("JA", EN), ("zh-cn", EN), ("ZH-CN", EN),

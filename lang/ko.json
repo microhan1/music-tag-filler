@@ -30,6 +30,7 @@
   "lbl_language": "언어",
   "opt_update_check": "새 버전 확인",
   "btn_feedback": "의견 보내기",
+  "feedback_tip": "안 되는 것·불편한 것·바라는 기능을 알려 주세요(브라우저가 열립니다)",
   "feedback_failed_title": "의견 보내기",
   "feedback_failed": "브라우저를 열지 못했습니다. 아래 주소를 복사해 브라우저 주소 창에 붙여 넣어 주세요. 로그인 없이 의견을 보낼 수 있습니다.",
   "btn_copy": "복사",

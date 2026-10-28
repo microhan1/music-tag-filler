@@ -123,7 +123,7 @@ exe 也接受相同的参数（`music-tag-filler.exe song.mp3 --auto`）。但�
 | [AcoustID](https://acoustid.org/) | 声音指纹 → 录音 ID | [AcoustID 服务条款](https://acoustid.org/webservice) |
 | [Cover Art Archive](https://coverartarchive.org/) | 专辑封面 | [关于 CAA](https://musicbrainz.org/doc/Cover_Art_Archive) |
 | [LRCLIB](https://lrclib.net/) | 歌词（仅在打开选项时） | [API 文档](https://lrclib.net/docs) |
-| [Chaekgalpi 工具](https://chaekgalpi.co.kr/tools/musictag) | 检查新版本（每天一次，可关闭） | 只发送工具名、版本和系统类别（`win`） |
+| [Chaekgalpi 工具](https://chaekgalpi.co.kr/en/tools/musictag?utm_source=github&utm_medium=referral&utm_campaign=tool_cta&utm_content=musictag) | 检查新版本（每天一次，可关闭） | 只发送工具名、版本和系统类别（`win`） |
 
 iTunes 韩国商店不销售音乐，搜索结果总是为空，因此所选国家没有结果时会自动改用美国商店。歌名和歌手名按来源返回的原文显示。
 
@@ -145,7 +145,7 @@ iTunes 韩国商店不销售音乐，搜索结果总是为空，因此所选国�
 
 ## 发送反馈
 
-遇到问题、用着不顺手或想要新功能，可以点窗口顶部的 **发送反馈**，或在 [chaekgalpi.co.kr/tools/musictag#feedback](https://chaekgalpi.co.kr/tools/musictag#feedback) 提交，无需登录。按钮只是在浏览器中打开那个页面，程序本身不发送任何内容。[GitHub Issues](https://github.com/microhan1/music-tag-filler/issues) 也照常受理。
+遇到问题、用着不顺手或想要新功能，可以点窗口顶部的 **发送反馈**，或在 [chaekgalpi.co.kr/en/tools/musictag#feedback](https://chaekgalpi.co.kr/en/tools/musictag#feedback) 提交，无需登录。按钮只是在浏览器中打开那个页面，程序本身不发送任何内容。[GitHub Issues](https://github.com/microhan1/music-tag-filler/issues) 也照常受理。
 
 ![顶部一行中的“发送反馈”按钮](docs/feedback_button.png)
 

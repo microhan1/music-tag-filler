@@ -30,6 +30,7 @@
   "lbl_language": "Language",
   "opt_update_check": "Check for updates",
   "btn_feedback": "Send feedback",
+  "feedback_tip": "Tell us what's broken or missing (opens your browser)",
   "feedback_failed_title": "Send feedback",
   "feedback_failed": "Could not open your browser. Copy the address below and paste it into your browser's address bar. No sign-in is needed.",
   "btn_copy": "Copy",

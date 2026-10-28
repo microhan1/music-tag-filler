@@ -30,6 +30,7 @@
   "lbl_language": "语言",
   "opt_update_check": "检查新版本",
   "btn_feedback": "发送反馈",
+  "feedback_tip": "告诉我们问题或建议（将打开浏览器）",
   "feedback_failed_title": "发送反馈",
   "feedback_failed": "无法打开浏览器。请复制下面的地址，粘贴到浏览器的地址栏中。无需登录。",
   "btn_copy": "复制",

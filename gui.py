@@ -67,6 +67,7 @@ UPDATE_SLUG = "musictag"  # the tool's name on the 책갈피 tools site
 NOTICE_DARK = "#b45309"
 GOOD_FG = "#15803d"
 FAIR_FG = "#b45309"
+TIP_BG = "#fffbe6"
 
 
 def _working_set_mb() -> int | None:
@@ -110,6 +111,115 @@ def _enable_dpi_awareness() -> None:
             ctypes.windll.user32.SetProcessDPIAware()
     except Exception:
         pass
+
+
+def _screen_box(x: int, y: int, widget: tk.Misc) -> tuple[int, int, int, int]:
+    """Left, top, right and bottom of the monitor holding (x, y), so a tooltip on a second
+    monitor stays there; the main screen when Windows cannot say."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class MONITORINFO(ctypes.Structure):
+                _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT),
+                            ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
+
+            user32 = ctypes.WinDLL("user32")
+            user32.MonitorFromPoint.restype = wintypes.HMONITOR
+            user32.MonitorFromPoint.argtypes = [wintypes.POINT, wintypes.DWORD]
+            user32.GetMonitorInfoW.argtypes = [wintypes.HMONITOR, ctypes.POINTER(MONITORINFO)]
+            monitor = user32.MonitorFromPoint(wintypes.POINT(x, y), 2)  # MONITOR_DEFAULTTONEAREST
+            info = MONITORINFO()
+            info.cbSize = ctypes.sizeof(MONITORINFO)
+            if monitor and user32.GetMonitorInfoW(monitor, ctypes.byref(info)):
+                r = info.rcMonitor
+                if r.right > r.left and r.bottom > r.top:
+                    return r.left, r.top, r.right, r.bottom
+        except Exception:
+            pass
+    return 0, 0, widget.winfo_screenwidth(), widget.winfo_screenheight()
+
+
+class Tooltip:
+    """A small note under a widget while the mouse rests on it (standard tkinter only).
+    It appears DELAY_MS after the pointer enters and goes when the pointer leaves or clicks.
+    The text is read when it is shown and again by refresh(), so switching the language
+    changes it even while it is up. It is kept inside the program window and the screen."""
+
+    DELAY_MS = 450
+
+    def __init__(self, widget: tk.Misc, get_text, font, px) -> None:
+        self.widget, self.get_text, self.font, self.px = widget, get_text, font, px
+        self.tip: tk.Toplevel | None = None
+        self.label: tk.Label | None = None
+        self._job: str | None = None
+        widget.bind("<Enter>", self._schedule, add="+")
+        widget.bind("<Leave>", self.hide, add="+")
+        widget.bind("<ButtonPress>", self.hide, add="+")
+        widget.bind("<Destroy>", self.hide, add="+")
+
+    def _schedule(self, _event=None) -> None:
+        self._cancel()
+        self._job = self.widget.after(self.DELAY_MS, self.show)
+
+    def _cancel(self) -> None:
+        if self._job is not None:
+            try:
+                self.widget.after_cancel(self._job)
+            except tk.TclError:
+                pass
+            self._job = None
+
+    def show(self) -> None:
+        self._job = None
+        if self.tip is not None or not self.widget.winfo_exists() or not self.widget.winfo_viewable():
+            return
+        p = self.px
+        tip = tk.Toplevel(self.widget)
+        tip.withdraw()
+        tip.overrideredirect(True)
+        tip.configure(bg=BORDER)
+        # 400 keeps each language on one line (Japanese at 320 left a lone "）" below)
+        self.label = tk.Label(tip, text=self.get_text(), font=self.font, justify="left", wraplength=p(400),
+                              bg=TIP_BG, fg=TEXT, bd=0, padx=p(8), pady=p(4))
+        self.label.pack(padx=1, pady=1)
+        self.tip = tip
+        self._place()
+        tip.deiconify()
+
+    def _place(self) -> None:
+        tip, w = self.tip, self.widget
+        tip.update_idletasks()
+        tw, th = tip.winfo_reqwidth(), tip.winfo_reqheight()
+        gap = self.px(4)
+        x, y = w.winfo_rootx(), w.winfo_rooty() + w.winfo_height() + gap
+        # the button sits at the window's right edge: pull the note inside the window, then the screen
+        top = w.winfo_toplevel()
+        x = max(top.winfo_rootx(), min(x, top.winfo_rootx() + top.winfo_width() - tw))
+        left, upper, right, bottom = _screen_box(w.winfo_rootx(), w.winfo_rooty(), w)
+        x = max(left, min(x, right - tw))
+        if y + th > bottom:
+            y = w.winfo_rooty() - th - gap
+        tip.geometry(f"+{x}+{max(upper, y)}")
+
+    def refresh(self) -> None:
+        """The current language's text, if the note is up."""
+        if self.tip is not None and self.label is not None:
+            try:
+                self.label.configure(text=self.get_text())
+                self._place()
+            except tk.TclError:
+                pass
+
+    def hide(self, _event=None) -> None:
+        self._cancel()
+        if self.tip is not None:
+            try:
+                self.tip.destroy()
+            except tk.TclError:
+                pass
+            self.tip, self.label = None, None
 
 
 class CoverStore:
@@ -363,6 +473,10 @@ class App:
                         lightcolor=NOTICE, darkcolor=NOTICE, font=self.font_bold, padding=(self.px(6), self.px(2)))
         style.map("Notice.TButton", background=[("active", NOTICE_DARK)], foreground=[("disabled", "white")])
         style.configure("Small.TButton", font=self.font_small, padding=(self.px(8), self.px(1)))
+        # 「의견 보내기」: Small.TButton with a blue border while it has the keyboard focus (same size)
+        style.configure("Feedback.TButton", font=self.font_small, padding=(self.px(8), self.px(1)))
+        style.map("Feedback.TButton", bordercolor=[("focus", ACCENT)], lightcolor=[("focus", ACCENT)],
+                  darkcolor=[("focus", ACCENT)])
         style.configure("TCheckbutton", background=BG, indicatorsize=self.px(14), indicatormargin=(0, 0, self.px(6), 0))
         style.map("TCheckbutton", background=[("active", BG)])
         style.configure("TCombobox", fieldbackground=CARD, background=CARD, arrowcolor=MUTED, padding=(4, 2))
@@ -418,9 +532,13 @@ class App:
         self.chk_update = self._reg(ttk.Checkbutton(head, variable=self.var_update_check, command=self._on_update_toggle),
                                     "opt_update_check")
         self.chk_update.grid(row=0, column=6, padx=(p(14), 0))
-        self.btn_feedback = self._reg(ttk.Button(head, command=self.open_feedback, style="Small.TButton"),
+        self.btn_feedback = self._reg(ttk.Button(head, command=self.open_feedback, style="Feedback.TButton"),
                                       "btn_feedback")
         self.btn_feedback.grid(row=0, column=7, padx=(p(10), 0))
+        # Tab reaches it after the update option; Space presses it (ttk), Enter too
+        for key in ("<Return>", "<KP_Enter>"):
+            self.btn_feedback.bind(key, self._press_feedback)
+        self.tip_feedback = Tooltip(self.btn_feedback, lambda: t("feedback_tip"), self.font_small, p)
         self.cmb_lang.bind("<<ComboboxSelected>>", self._on_lang)
 
         # ---- top / bottom split
@@ -595,6 +713,7 @@ class App:
         for col, key in heading_keys.items():
             self.tree.heading(col, text=t(key))
         self._fit_drop_hint()
+        self.tip_feedback.refresh()
         self._update_file_info()
         if self._status_key:
             self._set_status(self._status_key, **self._status_kwargs)
@@ -1593,7 +1712,7 @@ class App:
         """The tools page, never a download: the site counts and serves the download."""
         info = self._update_info
         if info is not None:
-            url = update_check.link_for(info, i18n.current_lang())  # English page for en/ja/zh screens
+            url = update_check.link_for(info, i18n.current_lang())  # English page unless the screen is Korean
             if url.startswith(update_check.SITE):
                 try:
                     webbrowser.open(url)
@@ -1613,9 +1732,14 @@ class App:
             self._hide_update_notice()
 
     # ------------------------------------------------------------ feedback
+    def _press_feedback(self, _event=None) -> str:
+        self.btn_feedback.invoke()
+        return "break"
+
     def open_feedback(self) -> None:
         """The tool page's feedback box in the browser. Nothing is sent from here; when no
         browser opens, the address is shown so it can be copied."""
+        self.tip_feedback.hide()
         url = update_check.feedback_url(UPDATE_SLUG, net.APP_VERSION, i18n.current_lang())
         try:
             opened = webbrowser.open(url)

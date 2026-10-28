@@ -30,6 +30,7 @@
   "lbl_language": "言語",
   "opt_update_check": "新しいバージョンを確認",
   "btn_feedback": "ご意見を送る",
+  "feedback_tip": "不具合・ご要望をお知らせください（ブラウザが開きます）",
   "feedback_failed_title": "ご意見を送る",
   "feedback_failed": "ブラウザを開けませんでした。下のアドレスをコピーして、ブラウザのアドレス欄に貼り付けてください。ログインは不要です。",
   "btn_copy": "コピー",

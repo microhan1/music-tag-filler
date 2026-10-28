@@ -123,7 +123,7 @@ exe も同じ引数を受け付けます（`music-tag-filler.exe song.mp3 --auto
 | [AcoustID](https://acoustid.org/) | 音声指紋 → 録音 ID | [AcoustID サービス規約](https://acoustid.org/webservice) |
 | [Cover Art Archive](https://coverartarchive.org/) | アルバムジャケット | [CAA について](https://musicbrainz.org/doc/Cover_Art_Archive) |
 | [LRCLIB](https://lrclib.net/) | 歌詞（オプションがオンのときだけ） | [API ドキュメント](https://lrclib.net/docs) |
-| [Chaekgalpi ツール](https://chaekgalpi.co.kr/tools/musictag) | 新しいバージョンの確認（1 日 1 回、オフにできます） | ツール名・バージョン・OS 系統（`win`）だけを送信 |
+| [Chaekgalpi ツール](https://chaekgalpi.co.kr/en/tools/musictag?utm_source=github&utm_medium=referral&utm_campaign=tool_cta&utm_content=musictag) | 新しいバージョンの確認（1 日 1 回、オフにできます） | ツール名・バージョン・OS 系統（`win`）だけを送信 |
 
 iTunes 韓国ストアは音楽を販売していないため結果が常に空になります。指定した国で結果が無いときは自動的に米国ストアを使います。曲名・アーティスト名は出典が返した原文のまま表示します。
 
@@ -145,7 +145,7 @@ iTunes 韓国ストアは音楽を販売していないため結果が常に空�
 
 ## ご意見を送る
 
-不具合・使いにくい点・欲しい機能は、ウィンドウ上部の **ご意見を送る** を押すか、[chaekgalpi.co.kr/tools/musictag#feedback](https://chaekgalpi.co.kr/tools/musictag#feedback) からログインなしで送れます。ボタンはそのページをブラウザで開くだけで、プログラム自身は何も送信しません。[GitHub Issues](https://github.com/microhan1/music-tag-filler/issues) もこれまでどおり受け付けています。
+不具合・使いにくい点・欲しい機能は、ウィンドウ上部の **ご意見を送る** を押すか、[chaekgalpi.co.kr/en/tools/musictag#feedback](https://chaekgalpi.co.kr/en/tools/musictag#feedback) からログインなしで送れます。ボタンはそのページをブラウザで開くだけで、プログラム自身は何も送信しません。[GitHub Issues](https://github.com/microhan1/music-tag-filler/issues) もこれまでどおり受け付けています。
 
 ![上部の行にある「ご意見を送る」ボタン](docs/feedback_button.png)
 

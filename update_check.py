@@ -77,25 +77,36 @@ def interpret(data: dict | None, version: str, skipped: str = "") -> UpdateInfo 
     return UpdateInfo(latest, version, url, url_en)
 
 
-def link_for(info: UpdateInfo, lang: str) -> str:
-    """The page [Update] opens: the Korean page on a Korean screen, the English page on any
-    other screen when the server gave one on the tools site, otherwise the Korean page."""
-    if lang != "ko" and info.url_en.startswith(SITE):
+DEFAULT_LANG = "en"  # the program's own screen language when none is known (i18n.DEFAULT_LANG)
+
+
+def is_korean(lang: str | None) -> bool:
+    """Which tools page a screen language gets (rule shared by the series): a language code
+    whose first part is ko gets the Korean page, every other code - listed or not - the
+    English page (/en; the site has no Japanese or Chinese page). None or an empty value
+    follows the program's default screen language."""
+    code = (lang or "").strip() or DEFAULT_LANG
+    return code.lower().replace("_", "-").split("-")[0] == "ko"
+
+
+def link_for(info: UpdateInfo, lang: str | None) -> str:
+    """The page [Update] opens: the Korean page on a Korean screen (is_korean), the English
+    page on any other screen when the server gave one on the tools site, otherwise the
+    Korean page."""
+    if not is_korean(lang) and info.url_en.startswith(SITE):
         return info.url_en
     return info.url
 
 
 FEEDBACK_PAGE = SITE + "{prefix}tools/{slug}"
-FEEDBACK_EN = ("en", "ja", "zh-cn")  # the site has no Japanese or Chinese page: English for those
 
 
 def feedback_url(slug: str, version: str | None, lang: str | None) -> str:
     """The tool page's "send feedback" box (#feedback), opened in the browser. Built only
     from constants and the running version - nothing from settings or the server. The
-    English page for en/ja/zh-CN screens, the Korean page otherwise. utm_source=app is how
-    the site's admin page tells the Windows program apart; v is left out when empty."""
-    code = (lang or "").strip().replace("_", "-").lower()
-    page = FEEDBACK_PAGE.format(prefix="en/" if code in FEEDBACK_EN else "", slug=slug)
+    Korean page on a Korean screen, the English page on any other (is_korean). utm_source=app
+    is how the site's admin page tells the Windows program apart; v is left out when empty."""
+    page = FEEDBACK_PAGE.format(prefix="" if is_korean(lang) else "en/", slug=slug)
     query = "utm_source=app&utm_medium=feedback"
     if version is not None and str(version).strip():
         query += "&v=" + urllib.parse.quote(str(version), safe="")
