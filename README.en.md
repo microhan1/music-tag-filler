@@ -141,7 +141,7 @@ The Korean iTunes storefront sells no music and returns nothing, so when the cho
 
 - No setup: drop, pick, save.
 - iTunes search alongside MusicBrainz makes it strong for K-pop, J-pop, Chinese music and cover art.
-- Korean UI by default, switchable to English, Chinese and Japanese.
+- Opens in Korean, English, Chinese or Japanese to match your Windows display language (English for any other language); you can switch at any time.
 
 ## Send feedback
 
