@@ -42,7 +42,6 @@ COVER_PX = 240
 THUMB_PX = 40
 PREVIEW_PX = 320  # hover preview of a candidate's cover
 PREVIEW_DELAY_MS = 250
-TOP_PANE_PX = 424
 LYRICS_BUSY_LIMIT = 5  # this many lookups in a row failing: stop asking LRCLIB for this save
 IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif")
 CHECK = "\u2713"
@@ -374,6 +373,7 @@ class App:
         self._loading_shown = False
         self._loading_tick = 0
         self._loading_key = "msg_loading"
+        self._fit_pending = True  # the top pane still has to be made tall enough for what it holds
 
         self.var_lang = tk.StringVar(value=i18n.LANG_NAMES[i18n.current_lang()])
         self.var_country = tk.StringVar(value=self.prefs.effective_country())
@@ -545,7 +545,7 @@ class App:
         self.paned = ttk.PanedWindow(root, orient="vertical")
         self.paned.grid(row=1, column=0, sticky="nsew", padx=p(16), pady=(p(4), p(6)))
 
-        top = ttk.LabelFrame(self.paned, padding=p(12))
+        top = self.frm_top = ttk.LabelFrame(self.paned, padding=p(12))
         self._reg(top, "section_current")
         self.paned.add(top, weight=0)  # keeps its height; the table below takes the rest
         top.columnconfigure(2, weight=1)
@@ -612,8 +612,9 @@ class App:
         bottom = ttk.LabelFrame(self.paned, padding=p(12))
         self._reg(bottom, "section_candidates")
         self.paned.add(bottom, weight=1)
-        # the top pane must show the cover and all seven fields; set the sash once the window is mapped
-        root.after(50, lambda: self.paned.sashpos(0, p(TOP_PANE_PX)))
+        # the top pane must show the cover, its buttons and all seven fields. A sash set on a timer
+        # was clamped while the window was not laid out yet (LESSONS A24): set it once the pane has a size.
+        self.paned.bind("<Configure>", lambda _e: self._fit_top_pane(), add="+")
         bottom.columnconfigure(0, weight=1)
         bottom.rowconfigure(1, weight=1)
 
@@ -907,8 +908,11 @@ class App:
             self.frm_files.grid()
         else:
             self.frm_files.grid_remove()
-        if show and not self.btn_cover_all.winfo_ismapped():
+        if show and not self.btn_cover_all.winfo_manager():
             self.btn_cover_all.pack(fill="x", pady=(self.px(6), 0), after=self.btn_cover)
+            # the button makes the cover column taller than the pane: lower the sash to show it
+            self._fit_pending = True
+            self.root.after_idle(self._fit_top_pane)
         elif not show and self.btn_cover_all.winfo_manager():
             self.btn_cover_all.pack_forget()
         # Update rows in place: deleting and re-inserting every row on each refresh
@@ -1693,16 +1697,37 @@ class App:
         try:
             sash = self.paned.sashpos(0)
         except tk.TclError:
-            sash = self.px(TOP_PANE_PX)
+            sash = 0
         self.frm_update.grid(row=3, column=0, sticky="ew", padx=self.px(16), pady=(0, self.px(10)))
         self.root.after_idle(lambda: self._restore_sash(sash))
 
     def _restore_sash(self, pos: int) -> None:
         try:
             # back where it was; a position that small means the pane had not been laid out yet
-            self.paned.sashpos(0, pos if pos > self.px(150) else self.px(TOP_PANE_PX))
+            if pos > self.px(150):
+                self.paned.sashpos(0, pos)
+            else:
+                self._fit_pending = True
+                self._fit_top_pane()
         except tk.TclError:
             pass
+
+    def _fit_top_pane(self) -> None:
+        """Lower the sash until the top pane shows everything it holds, if it does not yet.
+        Runs at start and when 「이 표지를 목록 전체에」 appears; never raises the sash, and a
+        sash the user moves afterwards stays where they put it."""
+        if not self._fit_pending:
+            return
+        self._fit_pending = False  # update_idletasks below can send <Configure> here again
+        try:
+            self.root.update_idletasks()
+            need = self.frm_top.winfo_reqheight()
+            if self.paned.winfo_height() > need and self.paned.sashpos(0) < need:
+                self.paned.sashpos(0, need)
+            # not laid out yet (or no room at all): try again on the next <Configure>
+            self._fit_pending = self.paned.sashpos(0) < need
+        except tk.TclError:
+            self._fit_pending = True
 
     def _hide_update_notice(self) -> None:
         self._update_info = None
