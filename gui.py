@@ -112,9 +112,10 @@ def _enable_dpi_awareness() -> None:
         pass
 
 
-def _screen_box(x: int, y: int, widget: tk.Misc) -> tuple[int, int, int, int]:
+def _screen_box(x: int, y: int, widget: tk.Misc, work: bool = False) -> tuple[int, int, int, int]:
     """Left, top, right and bottom of the monitor holding (x, y), so a tooltip on a second
-    monitor stays there; the main screen when Windows cannot say."""
+    monitor stays there; the main screen when Windows cannot say. work=True leaves out the
+    taskbar (the monitor's work area)."""
     if sys.platform == "win32":
         try:
             import ctypes
@@ -132,12 +133,50 @@ def _screen_box(x: int, y: int, widget: tk.Misc) -> tuple[int, int, int, int]:
             info = MONITORINFO()
             info.cbSize = ctypes.sizeof(MONITORINFO)
             if monitor and user32.GetMonitorInfoW(monitor, ctypes.byref(info)):
-                r = info.rcMonitor
+                r = info.rcWork if work else info.rcMonitor
                 if r.right > r.left and r.bottom > r.top:
                     return r.left, r.top, r.right, r.bottom
         except Exception:
             pass
     return 0, 0, widget.winfo_screenwidth(), widget.winfo_screenheight()
+
+
+def _work_area(widget: tk.Misc) -> tuple[int, int, int, int]:
+    """The main screen without the taskbar: where the window opens."""
+    return _screen_box(0, 0, widget, work=True)
+
+
+def _window_frame(px) -> tuple[int, int, int, int]:
+    """What the border and title bar add around the inside of a window: left, top, right, bottom."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            r = wintypes.RECT(0, 0, 100, 100)
+            if ctypes.windll.user32.AdjustWindowRectEx(ctypes.byref(r), 0x00CF0000, False, 0):  # WS_OVERLAPPEDWINDOW
+                return -r.left, -r.top, r.right - 100, r.bottom - 100
+        except Exception:
+            pass
+    return px(8), px(32), px(8), px(8)
+
+
+def fit_window(work: tuple[int, int, int, int], frame: tuple[int, int, int, int],
+               want: tuple[int, int], least: tuple[int, int]) -> tuple[int, int, int, int, int, int]:
+    """Inside size, position and least inside size of the main window so that all of it,
+    border and title bar too, lies in the work area, centred there. want and least are cut
+    down only when the work area is smaller (150% on a 1920×1080 screen: 1710×1230 wanted,
+    1008 high there). Returns (width, height, x, y, least width, least height)."""
+    left, top, right, bottom = work
+    fl, ft, fr, fb = frame
+    room_w = max(1, right - left - fl - fr)
+    room_h = max(1, bottom - top - ft - fb)
+    min_w, min_h = min(least[0], room_w), min(least[1], room_h)
+    w = max(min_w, min(want[0], room_w))
+    h = max(min_h, min(want[1], room_h))
+    x = left + max(0, (right - left) - (w + fl + fr)) // 2
+    y = top + max(0, (bottom - top) - (h + ft + fb)) // 2
+    return w, h, x, y, min_w, min_h
 
 
 class Tooltip:
@@ -336,8 +375,7 @@ class App:
         _enable_dpi_awareness()
         self.root = TkinterDnD.Tk() if _HAS_DND else tk.Tk()
         self.scale = max(1.0, min(3.0, self.root.winfo_fpixels("1i") / 96.0))
-        self.root.geometry(f"{self.px(1140)}x{self.px(820)}")
-        self.root.minsize(self.px(960), self.px(700))
+        self._place_window()
         self.root.configure(bg=BG)
         self._set_window_icon()
 
@@ -415,6 +453,14 @@ class App:
 
     def px(self, n: int) -> int:
         return int(round(n * self.scale))
+
+    def _place_window(self, work: tuple[int, int, int, int] | None = None) -> None:
+        """1140×820 (least 960×700), made smaller only where the screen is, and centred on it,
+        so the save row and status line are never below the taskbar (LESSONS A25)."""
+        w, h, x, y, min_w, min_h = fit_window(work or _work_area(self.root), _window_frame(self.px),
+                                              (self.px(1140), self.px(820)), (self.px(960), self.px(700)))
+        self.root.minsize(min_w, min_h)
+        self.root.geometry(f"{w}x{h}+{x}+{y}")
 
     def _placeholder_image(self) -> Image.Image:
         size = self.px(COVER_PX)
