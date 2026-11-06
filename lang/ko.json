@@ -1,6 +1,6 @@
 {
   "app_title": "음악 정보 채우기",
-  "drop_hint": "음악 파일이나 폴더를 여기에 끌어다 놓으세요",
+  "drop_hint": "여러 곡도 한 번에 검색: 파일이나 폴더를 끌어다 놓으세요",
   "section_current": "현재 파일 정보",
   "section_candidates": "검색 결과",
   "field_title": "제목",

@@ -1,6 +1,6 @@
 {
   "app_title": "音楽タグ補完",
-  "drop_hint": "音楽ファイルまたはフォルダをここにドロップ",
+  "drop_hint": "複数曲も一括検索：ファイルやフォルダをここにドロップ",
   "section_current": "現在のファイル情報",
   "section_candidates": "検索結果",
   "field_title": "タイトル",

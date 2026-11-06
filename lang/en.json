@@ -1,6 +1,6 @@
 {
   "app_title": "Music Tag Filler",
-  "drop_hint": "Drop music files or a folder here",
+  "drop_hint": "Search many tracks at once: drop files or a folder",
   "section_current": "Current file info",
   "section_candidates": "Search results",
   "field_title": "Title",

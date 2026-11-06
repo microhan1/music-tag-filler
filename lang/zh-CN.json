@@ -1,6 +1,6 @@
 {
   "app_title": "音乐标签补全",
-  "drop_hint": "将音乐文件或文件夹拖放到此处",
+  "drop_hint": "多首歌曲也能一次搜索：将文件或文件夹拖放到此处",
   "section_current": "当前文件信息",
   "section_candidates": "搜索结果",
   "field_title": "标题",
