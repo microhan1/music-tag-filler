@@ -20,6 +20,8 @@ pip install -r requirements.txt
 python main.py
 ```
 
+- **生成 exe**：`build.bat`（PyInstaller 单文件 exe）。启动时显示的图片 `assets/splash.png` 通过 `--splash assets\splash.png` 打包，可用 `python assets/make_splash.py` 重新生成。
+
 ## 使用方法
 
 1. 把音乐文件或文件夹拖到窗口上。程序会从文件名读取 `歌手 - 标题` 并立即开始搜索。

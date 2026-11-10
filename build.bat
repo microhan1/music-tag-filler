@@ -14,9 +14,19 @@ rem acoustid_key.txt (git-ignored) holds the AcoustID application key for the ex
 set KEYFILE=
 if exist "acoustid_key.txt" set KEYFILE=--add-data "acoustid_key.txt;."
 
+rem --splash: assets\splash.png is shown while the one-file exe unpacks (a few seconds on a
+rem cold start); gui.launch() takes it down once the window is painted (startup.close_splash).
+rem --hidden-import: requests and Pillow are imported by name at run time (startup.lazy), which
+rem PyInstaller's analysis cannot see; without these the exe lacked certifi and PIL._imagingft
+rem (LESSONS D12). tests/test_startup.py checks this list against startup.lazy() calls.
 python -m PyInstaller --noconfirm --clean --onefile --windowed ^
   --name music-tag-filler ^
   --icon "assets\icon.ico" ^
+  --splash "assets\splash.png" ^
+  --hidden-import "requests" ^
+  --hidden-import "PIL.Image" ^
+  --hidden-import "PIL.ImageDraw" ^
+  --hidden-import "PIL.ImageTk" ^
   --add-data "assets\icon.ico;assets" ^
   --add-data "assets\icon.png;assets" ^
   --add-data "lang;lang" ^

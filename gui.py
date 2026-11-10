@@ -16,7 +16,13 @@ import webbrowser
 from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
 
-from PIL import Image, ImageDraw, ImageTk
+import startup
+
+# Pillow is loaded on first use (any attribute read) rather than here, so the window is up
+# before it: launch() preloads it from a background thread right after the first paint.
+Image = startup.lazy("PIL.Image")
+ImageDraw = startup.lazy("PIL.ImageDraw")
+ImageTk = startup.lazy("PIL.ImageTk")
 
 import i18n
 import net
@@ -57,6 +63,7 @@ ACCENT_DARK = "#1d4ed8"
 STRIPE = "#f9fafb"
 CHANGED_BG = "#fef3c7"
 NORMAL_BG = CARD
+PLACEHOLDER_BG = "#e5e7eb"  # the cover box before a cover is shown
 AUTO_FG = "#9ca3af"
 DONE_FG = "#15803d"
 NOTICE = "#d97706"
@@ -401,7 +408,12 @@ class App:
         self._preview_pos = (0, 0)
         self.covers = CoverStore()
         self._cover_photo: ImageTk.PhotoImage | None = None
-        self._placeholder = ImageTk.PhotoImage(self._placeholder_image())
+        # The cover box starts as a plain grey square of the right size, drawn by Tk alone;
+        # the note on it needs Pillow and is drawn by _finish_placeholder once that is loaded.
+        size = self.px(COVER_PX)
+        self._placeholder = tk.PhotoImage(width=size, height=size)
+        self._placeholder.put(PLACEHOLDER_BG, to=(0, 0, size, size))
+        self._placeholder_ready = False
         self._texts: list[tuple[tk.Misc, str, str]] = []
         self._status_key = ""
         self._status_kwargs: dict = {}
@@ -462,9 +474,19 @@ class App:
         self.root.minsize(min_w, min_h)
         self.root.geometry(f"{w}x{h}+{x}+{y}")
 
+    def _finish_placeholder(self) -> None:
+        """Draw the note on the cover box (needs Pillow). Called on the Tk thread once the
+        background preload is done, or by the first cover shown; later calls do nothing."""
+        if self._placeholder_ready or self._closing:
+            return
+        self._placeholder = ImageTk.PhotoImage(self._placeholder_image())
+        self._placeholder_ready = True
+        if self._cover_photo is None:
+            self.lbl_cover.configure(image=self._placeholder)
+
     def _placeholder_image(self) -> Image.Image:
         size = self.px(COVER_PX)
-        im = Image.new("RGB", (size, size), "#e5e7eb")
+        im = Image.new("RGB", (size, size), PLACEHOLDER_BG)
         d = ImageDraw.Draw(im)
         # a simple note: two heads, two stems and a beam
         u = size / 12
@@ -1155,6 +1177,8 @@ class App:
                     self._cover_photo = ImageTk.PhotoImage(im)
             except Exception:
                 self._cover_photo = None
+        if not self._placeholder_ready and ImageTk.loaded:
+            self._finish_placeholder()  # Pillow is in (this cover, or a file's cover, brought it): draw the note too
         self.lbl_cover.configure(image=self._cover_photo if self._cover_photo is not None else self._placeholder)
 
     def apply_cover_to_all(self) -> None:
@@ -1929,5 +1953,12 @@ def open_in_explorer(path: str) -> None:
 
 
 def launch(initial_files: list[str] | None = None) -> None:
-    app = App(initial_files)
+    try:
+        app = App(initial_files)
+        app.root.update()  # paint the window first, then take the exe's start-up picture down
+    finally:
+        startup.close_splash()  # also when the window could not be made: an error must not hide behind the picture
+    # requests and Pillow load in the background now; a file dropped before they are in waits for them
+    threading.Thread(target=startup.preload_heavy, kwargs={"done": lambda: app._ui(app._finish_placeholder)},
+                     name="preload", daemon=True).start()
     app.root.mainloop()

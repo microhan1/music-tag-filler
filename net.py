@@ -13,7 +13,11 @@ import time
 from typing import Callable
 from urllib.parse import urlsplit
 
-import requests
+import startup
+
+# requests takes about 0.4 s to import; it is loaded on first use (any attribute read), from a
+# background thread once the window is up, so the GUI opens without it. See startup.py.
+requests = startup.lazy("requests")
 
 APP_NAME = "music-tag-filler"
 APP_VERSION = "0.2.6"  # sent in the User-Agent; MusicBrainz asks for the real version — bump with each release

@@ -20,6 +20,8 @@ pip install -r requirements.txt
 python main.py
 ```
 
+- **exe 만들기**: `build.bat`(PyInstaller 한 파일 exe). 켜는 동안 보이는 시작 그림 `assets/splash.png`는 `--splash assets\splash.png`로 들어가고, 그림은 `python assets/make_splash.py`로 다시 만듭니다.
+
 ## 사용법
 
 1. 음악 파일이나 폴더를 창에 끌어다 놓습니다. 파일명에서 `가수 - 제목`을 읽어 검색이 바로 돌아갑니다.

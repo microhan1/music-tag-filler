@@ -14,6 +14,7 @@ import i18n
 import pipeline
 import prefs as prefs_mod
 import search_lyrics
+import startup
 import tags
 from i18n import t
 from match import AUTO_SELECT_SCORE, Candidate
@@ -263,10 +264,14 @@ def main(argv: list[str] | None = None) -> int:
     # with those files loaded instead of running the CLI into nowhere.
     headless = getattr(sys, "frozen", False) and sys.stdout is None
     if args.gui or headless or not args.inputs:
-        import gui
+        try:
+            import gui
 
-        gui.launch(args.inputs or None)
+            gui.launch(args.inputs or None)  # closes the exe's start-up picture once the window is painted
+        finally:
+            startup.close_splash()  # and when gui could not even be imported
         return 0
+    startup.close_splash()  # a console run: the picture would only sit on top of the console
     try:
         return run_cli(args)
     except KeyboardInterrupt:

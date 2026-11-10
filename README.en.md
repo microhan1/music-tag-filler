@@ -20,6 +20,8 @@ pip install -r requirements.txt
 python main.py
 ```
 
+- **Building the exe**: `build.bat` (PyInstaller one-file exe). The picture shown while it starts, `assets/splash.png`, goes in with `--splash assets\splash.png`; `python assets/make_splash.py` redraws it.
+
 ## Usage
 
 1. Drop music files or a folder onto the window. `Artist - Title` is read from the file name and the search starts right away.
