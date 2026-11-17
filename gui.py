@@ -408,6 +408,10 @@ class App:
         self._preview_job: str | None = None
         self._preview_pos = (0, 0)
         self.covers = CoverStore()
+        # covers for picks made while another job held the worker (LESSONS A28): file id -> (file, pick)
+        self._covers_wanted: dict[int, tuple[FileState, Candidate]] = {}
+        self._covers_lock = threading.Lock()
+        self._covers_poll = False
         self._cover_photo: ImageTk.PhotoImage | None = None
         # The cover box starts as a plain grey square of the right size, drawn by Tk alone;
         # the note on it needs Pillow and is drawn by _finish_placeholder once that is loaded.
@@ -1092,6 +1096,7 @@ class App:
         for idx, s in enumerate(states, 1):
             if self.cancel_event.is_set():
                 break
+            self._fetch_wanted_covers()  # the user's picks first: their covers should not wait for the whole list
             try:
                 if s.info is None:  # the cover filter has already read the files it kept
                     s.attach_info(tags.read_file(s.path))
@@ -1506,6 +1511,8 @@ class App:
 
     # ------------------------------------------------------------ searching
     def search_text(self) -> None:
+        if self._busy():  # Enter in the query box still arrives while the button is greyed out
+            return
         s = self.current
         if s is None or s.info is None:
             self._set_status("msg_no_files")
@@ -1565,6 +1572,8 @@ class App:
 
     def cancel(self) -> None:
         self.cancel_event.set()
+        with self._covers_lock:
+            self._covers_wanted.clear()
         self._set_status("status_cancelled")
 
     # ------------------------------------------------------------ apply / save / undo
@@ -1588,10 +1597,41 @@ class App:
         self._apply_values(s, cand)
         self._show_file(s)
         if cand.cover_url or cand.album:  # the album name alone can find a cover (iTunes fallback)
-            self._run(self._fetch_cover_job, s, cand)
+            # Double-click and Enter in the table apply a pick while the list is still being
+            # searched; _run would drop the cover job then, so it waits its turn (LESSONS A28).
+            with self._covers_lock:
+                self._covers_wanted[id(s)] = (s, cand)  # a later pick for the same file replaces it
+            if not self._covers_poll:  # one waiting loop is enough
+                self._start_wanted_covers()
+
+    def _start_wanted_covers(self) -> None:
+        """Tk thread: fetch the waiting covers now, or once the running job is over."""
+        self._covers_poll = False
+        if self._closing:
+            return
+        with self._covers_lock:
+            if not self._covers_wanted:
+                return
+        if self._busy():  # a batch fetches them between files; this catches every other job
+            self._covers_poll = True
+            self.root.after(200, self._start_wanted_covers)
+        else:
+            self._run(self._fetch_wanted_covers)
+
+    def _fetch_wanted_covers(self) -> None:
+        """Worker thread: fetch the covers waiting for picks the user made."""
+        while not self.cancel_event.is_set():
+            with self._covers_lock:
+                if not self._covers_wanted:
+                    return
+                _key, (s, cand) = self._covers_wanted.popitem()
+            if s in self.files and s.selected is cand:
+                self._fetch_cover_job(s, cand)
 
     def _fetch_cover_job(self, s: FileState, cand: Candidate) -> None:
         data = pipeline.fetch_cover(cand, self._country, on_wait=self._on_wait, cancel=self.cancel_event)
+        if s.selected is not cand:  # the user picked another row meanwhile: its own cover is on its way
+            return
         if data:
             s.cover_key, s.cover_changed = self.covers.put(data), True
             if s is self.current:
