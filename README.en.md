@@ -36,10 +36,13 @@ With several files, each one is searched and the first candidate scoring 90 or m
 2. Press **Use this cover for all** and confirm; every other file in the list gets the same cover.
 3. Press **Save all** to write it to the files. Undo still works file by file.
 
+**Add only files without a cover**: tick this box under the cover buttons, then add files or a folder, and songs that already have a cover (album art) stay out of the list. Subfolders are filtered the same way, and a song with title and artist filled in is still listed if it has no cover. The status line says how many songs were skipped. If they all belong to one album, **Use this cover for all** and then **Save all** fill in just the covers. The box is off at first and stays ticked the next time you open the app.
+
 ```bash
 python main.py song.mp3                      # lists numbered candidates and asks
 python main.py music_folder --auto --rename  # saves without asking at match >= 90, renames too
 python main.py music_folder --auto --lyrics  # also add lyrics to files without them
+python main.py music_folder --auto --only-missing-cover  # only files without a cover; prints how many were skipped
 python main.py song.mp3 --undo               # restores the original tags from the backup
 ```
 

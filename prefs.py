@@ -20,6 +20,7 @@ class Prefs:
     save_alert: bool = False  # pop up a dialog after saving; the status line always reports
     lyrics: bool = False  # look lyrics up on LRCLIB when saving a file that has none
     lyrics_notice_seen: bool = False  # the cautions are shown once when lyrics is first turned on
+    only_missing_cover: bool = False  # when adding files, leave out the ones that already carry a cover
     update_check: bool = True  # once a day, ask the tools site whether a newer version exists
     update_check_last: str = ""  # YYYY-MM-DD of the last check the server answered
     update_check_skipped: str = ""  # "Later" was pressed for this version: do not show it again
@@ -51,6 +52,7 @@ def load() -> Prefs:
         save_alert=typed("save_alert", bool),
         lyrics=typed("lyrics", bool),
         lyrics_notice_seen=typed("lyrics_notice_seen", bool),
+        only_missing_cover=typed("only_missing_cover", bool),
         update_check=typed("update_check", bool),
         update_check_last=typed("update_check_last", str).strip()[:10],
         update_check_skipped=typed("update_check_skipped", str).strip()[:32],

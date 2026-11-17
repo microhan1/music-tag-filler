@@ -54,6 +54,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--sound", action="store_true", help=t("cli_sound"))
     p.add_argument("--undo", action="store_true", help=t("cli_undo"))
     p.add_argument("--no-recurse", action="store_true", help=t("cli_no_recurse"))
+    p.add_argument("--only-missing-cover", action="store_true", help=t("cli_only_missing_cover"))
     p.add_argument("--lang", choices=i18n.LANGS, help=t("cli_lang"))
     p.add_argument("--gui", action="store_true", help=t("cli_gui"))
     return p
@@ -148,6 +149,14 @@ def run_cli(args: argparse.Namespace) -> int:
         return 2
     if args.undo:
         return 1 if run_undo(files) or missing else 0
+    skipped_with_cover = 0
+    if args.only_missing_cover:
+        kept, skipped_with_cover = pipeline.split_missing_cover(files)
+        files = [path for path, _info in kept]
+        if not files:
+            print(t("msg_all_have_cover", count=skipped_with_cover))
+            return 1 if missing else 0
+        print(t("msg_cover_skipped", count=skipped_with_cover))
     prefs = prefs_mod.load()
     if args.country:
         prefs.country = args.country
@@ -244,6 +253,8 @@ def run_cli(args: argparse.Namespace) -> int:
             print(t("msg_cover_failed"))
         saved += 1
     print(t("msg_saved", count=saved))
+    if args.only_missing_cover:  # repeated at the end: the first line has scrolled away in a long run
+        print(t("msg_cover_skipped", count=skipped_with_cover))
     return 1 if failures else 0
 
 

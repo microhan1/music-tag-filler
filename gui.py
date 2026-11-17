@@ -432,6 +432,7 @@ class App:
         self.var_rename = tk.BooleanVar(value=self.prefs.rename)
         self.var_save_alert = tk.BooleanVar(value=self.prefs.save_alert)
         self.var_lyrics = tk.BooleanVar(value=self.prefs.lyrics)
+        self.var_only_missing_cover = tk.BooleanVar(value=self.prefs.only_missing_cover)
         self.var_update_check = tk.BooleanVar(value=self.prefs.update_check)
         self._update_info: update_check.UpdateInfo | None = None
         self._feedback_win: tk.Toplevel | None = None  # the address to copy when no browser opened
@@ -652,6 +653,21 @@ class App:
         self.btn_cover.pack(fill="x", pady=(p(8), 0))
         # shown only when the list holds several files (see _refresh_list)
         self.btn_cover_all = self._reg(ttk.Button(cov, command=self.apply_cover_to_all), "btn_cover_all")
+        # 「표지 없는 파일만 넣기」 applies when files come in (drop, Add files, Add folder). The option row
+        # by the save buttons is already full at the smallest window, so it has two boxes on one setting:
+        # under the cover buttons while there is no file list (0 or 1 file: the fields column is taller
+        # there, so little height is added), and under the file list buttons once the list shows (that
+        # column has room to spare, while the cover column is then the tallest; see _refresh_list).
+        self.chk_only_missing_cover = self._reg(
+            ttk.Checkbutton(cov, variable=self.var_only_missing_cover, command=self._save_prefs),
+            "opt_only_missing_cover")
+        self.chk_only_missing_cover.pack(anchor="w", pady=(p(4), 0))
+        self.chk_only_missing_cover_list = self._reg(
+            ttk.Checkbutton(self.frm_files, variable=self.var_only_missing_cover, command=self._save_prefs),
+            "opt_only_missing_cover")
+        self.chk_only_missing_cover_list.grid(row=3, column=0, columnspan=2, sticky="w", pady=(p(6), 0))
+        self.tips_only_missing_cover = [Tooltip(w, lambda: t("tip_only_missing_cover"), self.font_small, p)
+                                        for w in (self.chk_only_missing_cover, self.chk_only_missing_cover_list)]
 
         # fields
         fields = ttk.Frame(top)
@@ -783,6 +799,8 @@ class App:
             self.tree.heading(col, text=t(key))
         self._fit_drop_hint()
         self.tip_feedback.refresh()
+        for tip in self.tips_only_missing_cover:
+            tip.refresh()
         self._update_file_info()
         if self._status_key:
             self._set_status(self._status_key, **self._status_kwargs)
@@ -816,6 +834,13 @@ class App:
         """Already-translated composite text (not re-rendered on language change)."""
         self._status_key, self._status_kwargs = "", {}
         self.lbl_status.configure(text=text)
+
+    def _prepend_status(self, key: str, **kwargs) -> None:
+        """Put one more fact on the status line next to what it says now (e.g. how many files
+        were skipped). It goes first: a long status is cut at the right edge in a narrow window."""
+        current = self.lbl_status.cget("text")
+        extra = t(key, **kwargs)
+        self._set_status_text(" \u00b7 ".join([extra, current]) if current else extra)
 
     def _busy(self) -> bool:
         return self.worker is not None and self.worker.is_alive()
@@ -948,12 +973,47 @@ class App:
             if not found:
                 self._set_status("msg_no_files")
             return
+        if self.var_only_missing_cover.get():
+            # each file has to be opened to know: done on the worker, listed only afterwards
+            self._run(self._filter_and_load, new)
+            return
         states = [FileState(path=p) for p in new]
+        self._add_states(states)
+        self._run(self._load_and_search, states, len(self.files) > 1)
+
+    def _add_states(self, states: list[FileState]) -> None:
         self.files.extend(states)
-        for s in states:
+        for _s in states:
             self.lst_files.insert("end", "")
         self._refresh_list()
-        self._run(self._load_and_search, states, len(self.files) > 1)
+
+    def _filter_and_load(self, paths: list[str]) -> None:
+        """「Files without a cover only」: open each new file, list the ones that carry no
+        cover of their own, then search them like any other added files."""
+        total = len(paths)
+
+        def progress(idx: int, name: str) -> None:
+            self._ui(self._set_status, "status_cover_check", index=idx, total=total, name=name)
+            self._ui(self.progress.configure, {"value": 100.0 * (idx - 1) / total})
+
+        kept, skipped = pipeline.split_missing_cover(paths, cancel=self.cancel_event, on_progress=progress)
+        if self.cancel_event.is_set():
+            self._ui(self._set_status, "status_cancelled")
+            return
+        if not kept:
+            self._ui(self._set_status, "msg_all_have_cover", count=skipped)
+            return
+        states = []
+        for path, info in kept:
+            s = FileState(path=path)
+            if info is not None:  # unreadable files are read (and reported) again by _load_and_search
+                s.attach_info(info)
+                s.query = pipeline.query_text(info)
+            states.append(s)
+        # nothing else can change the list while this worker runs (add_paths waits for it)
+        batch = len(self.files) + len(states) > 1
+        self._ui(self._add_states, states)  # queued before every update _load_and_search sends
+        self._load_and_search(states, batch, skipped)
 
     def clear_files(self) -> None:
         if self._busy():
@@ -983,6 +1043,11 @@ class App:
             self.root.after_idle(self._fit_top_pane)
         elif not show and self.btn_cover_all.winfo_manager():
             self.btn_cover_all.pack_forget()
+        # one 「표지 없는 파일만 넣기」 box on screen: in the file list column once it shows (see _build)
+        if show and self.chk_only_missing_cover.winfo_manager():
+            self.chk_only_missing_cover.pack_forget()
+        elif not show and not self.chk_only_missing_cover.winfo_manager():
+            self.chk_only_missing_cover.pack(anchor="w", pady=(self.px(4), 0), after=self.btn_cover)
         # Update rows in place: deleting and re-inserting every row on each refresh
         # made the list jump and flicker whenever a file was clicked or a field edited.
         lst = self.lst_files
@@ -1013,7 +1078,7 @@ class App:
             self._show_file(self.files[sel[0]])
 
     # ------------------------------------------------------------ loading + batch search
-    def _load_and_search(self, states: list[FileState], batch: bool) -> None:
+    def _load_and_search(self, states: list[FileState], batch: bool, skipped_with_cover: int = 0) -> None:
         total = len(states)
         first_shown = False
         net_error = False
@@ -1022,8 +1087,9 @@ class App:
             if self.cancel_event.is_set():
                 break
             try:
-                s.attach_info(tags.read_file(s.path))
-                s.query = pipeline.query_text(s.info)
+                if s.info is None:  # the cover filter has already read the files it kept
+                    s.attach_info(tags.read_file(s.path))
+                    s.query = pipeline.query_text(s.info)
             except Exception:
                 s.error = "err_open_failed"
                 self._ui(self._mark_searching, [s], False)
@@ -1063,6 +1129,8 @@ class App:
             self._ui(self._set_online, False)  # searching is off, editing and saving still work
         else:
             self._ui(self._set_status, "msg_batch_done", auto=auto, total=total)
+        if skipped_with_cover:
+            self._ui(self._prepend_status, "msg_cover_skipped", count=skipped_with_cover)
         self._ui(self._refresh_list)
 
     def _after_file_loaded(self, s: FileState) -> None:
@@ -1737,6 +1805,7 @@ class App:
         self.prefs.rename = bool(self.var_rename.get())
         self.prefs.save_alert = bool(self.var_save_alert.get())
         self.prefs.lyrics = bool(self.var_lyrics.get())
+        self.prefs.only_missing_cover = bool(self.var_only_missing_cover.get())
         self.prefs.update_check = bool(self.var_update_check.get())
         self.prefs.country = self.var_country.get()
         prefs_mod.save(self.prefs)

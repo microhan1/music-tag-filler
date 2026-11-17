@@ -111,6 +111,36 @@ def query_text(info: tags.FileInfo) -> str:
     return match.build_query(title, artist)
 
 
+def split_missing_cover(paths: list[str], *, cancel: threading.Event | None = None,
+                        on_progress: Callable[[int, str], None] | None = None,
+                        ) -> tuple[list[tuple[str, tags.FileInfo | None]], int]:
+    """The "files without a cover only" filter used when files are added.
+
+    A file is skipped when it carries a front cover of its own: the same test as the
+    window's FileState.has_cover (tags.read_file found one). Its other tags do not count,
+    so a file with every tag but no cover is kept. A file that cannot be read is kept
+    with None, so it is listed and reported as before instead of vanishing silently.
+    Returns (kept files with what was read, number skipped for having a cover).
+    The cover bytes are dropped as soon as the file is judged."""
+    kept: list[tuple[str, tags.FileInfo | None]] = []
+    skipped = 0
+    for idx, path in enumerate(paths, 1):
+        if cancel is not None and cancel.is_set():
+            break
+        if on_progress is not None:
+            on_progress(idx, os.path.basename(path))
+        try:
+            info = tags.read_file(path)
+        except Exception:
+            kept.append((path, None))
+            continue
+        if info.cover is not None:
+            skipped += 1
+            continue
+        kept.append((path, info))
+    return kept, skipped
+
+
 def search_text(query: str, country: str, file_length: float | None, *, on_wait: WaitCallback | None = None,
                 cancel: threading.Event | None = None) -> SearchResult:
     """iTunes + MusicBrainz for one query string, merged and ranked."""
