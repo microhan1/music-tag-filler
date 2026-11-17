@@ -363,6 +363,22 @@ def test_option_box_is_off_at_start_and_sits_under_the_cover_buttons(app):
     assert app.chk_only_missing_cover.cget("text") == i18n.t("opt_only_missing_cover")
 
 
+def test_box_label_says_search_in_every_language():
+    """2026-11-17 (사장님): 「표지 없는 파일만 넣기」 → 「표지 없는 파일만 검색」. The setting key and
+    the CLI flag keep their names so old settings files still work."""
+    want = {"ko": "표지 없는 파일만 검색", "en": "Search only files without a cover",
+            "zh-CN": "只搜索无封面的文件", "ja": "ジャケットのない曲だけ検索"}
+    before = i18n.current_lang()
+    try:
+        for lang, text in want.items():
+            i18n.set_lang(lang, persist=False)
+            assert i18n.t("opt_only_missing_cover") == text
+            assert "넣기" not in i18n.t("tip_only_missing_cover")
+    finally:
+        i18n.set_lang(before, persist=False)
+    assert "only_missing_cover" in prefs_mod.Prefs.__dataclass_fields__
+
+
 def test_ticking_the_box_saves_the_setting(app):
     app.chk_only_missing_cover.invoke()
     assert app.var_only_missing_cover.get() is True

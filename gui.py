@@ -24,6 +24,7 @@ Image = startup.lazy("PIL.Image")
 ImageDraw = startup.lazy("PIL.ImageDraw")
 ImageTk = startup.lazy("PIL.ImageTk")
 
+import check_indicator
 import i18n
 import net
 import pipeline
@@ -546,8 +547,13 @@ class App:
         style.configure("Feedback.TButton", font=self.font_small, padding=(self.px(8), self.px(1)))
         style.map("Feedback.TButton", bordercolor=[("focus", ACCENT)], lightcolor=[("focus", ACCENT)],
                   darkcolor=[("focus", ACCENT)])
-        style.configure("TCheckbutton", background=BG, indicatorsize=self.px(14), indicatormargin=(0, 0, self.px(6), 0))
+        style.configure("TCheckbutton", background=BG)
         style.map("TCheckbutton", background=[("active", BG)])
+        # a blue box with a white tick instead of clam's X (2026-11-17). Same box and text position as
+        # clam's indicatorsize 14 + margin 6, whose box was drawn 1px larger than the space it asked for
+        gap = self.px(14) + self.px(6) - check_indicator.box_size(self.scale)
+        self._check_images = check_indicator.install(style, self.root, scale=self.scale, accent=ACCENT,
+                                                     accent_dark=ACCENT_DARK, bg=BG, gap=gap)
         style.configure("TCombobox", fieldbackground=CARD, background=CARD, arrowcolor=MUTED, padding=(4, 2))
         style.map("TCombobox", fieldbackground=[("readonly", CARD)], background=[("readonly", CARD)],
                   foreground=[("readonly", TEXT)], selectbackground=[("readonly", CARD)],
@@ -653,7 +659,7 @@ class App:
         self.btn_cover.pack(fill="x", pady=(p(8), 0))
         # shown only when the list holds several files (see _refresh_list)
         self.btn_cover_all = self._reg(ttk.Button(cov, command=self.apply_cover_to_all), "btn_cover_all")
-        # 「표지 없는 파일만 넣기」 applies when files come in (drop, Add files, Add folder). The option row
+        # 「표지 없는 파일만 검색」 applies when files come in (drop, Add files, Add folder). The option row
         # by the save buttons is already full at the smallest window, so it has two boxes on one setting:
         # under the cover buttons while there is no file list (0 or 1 file: the fields column is taller
         # there, so little height is added), and under the file list buttons once the list shows (that
@@ -1043,7 +1049,7 @@ class App:
             self.root.after_idle(self._fit_top_pane)
         elif not show and self.btn_cover_all.winfo_manager():
             self.btn_cover_all.pack_forget()
-        # one 「표지 없는 파일만 넣기」 box on screen: in the file list column once it shows (see _build)
+        # one 「표지 없는 파일만 검색」 box on screen: in the file list column once it shows (see _build)
         if show and self.chk_only_missing_cover.winfo_manager():
             self.chk_only_missing_cover.pack_forget()
         elif not show and not self.chk_only_missing_cover.winfo_manager():
