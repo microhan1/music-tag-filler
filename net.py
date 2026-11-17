@@ -20,7 +20,7 @@ import startup
 requests = startup.lazy("requests")
 
 APP_NAME = "music-tag-filler"
-APP_VERSION = "0.2.9"  # sent in the User-Agent; MusicBrainz asks for the real version — bump with each release
+APP_VERSION = "0.2.10"  # sent in the User-Agent; MusicBrainz asks for the real version — bump with each release
 APP_URL = "https://github.com/microhan1/music-tag-filler"
 USER_AGENT = f"{APP_NAME}/{APP_VERSION} ( {APP_URL} )"
 
