@@ -205,12 +205,14 @@ def test_picks_on_several_files_each_get_their_own_cover(app):
 def test_the_cover_shows_when_the_picked_file_is_on_screen(app, monkeypatch):
     start_batch_and_hold(app)
     shown: list = []
-    real_show = app._show_cover
-    monkeypatch.setattr(app, "_show_cover", lambda data: shown.append(data) or real_show(data))
+    real_paint = app._paint_cover
+    monkeypatch.setattr(app, "_paint_cover",
+                        lambda im: shown.append(None if im is None else im.getpixel((0, 0))) or real_paint(im))
     pick(app, app.files[0], "Album B")
     app.gate.set()
     wait_idle(app)
-    assert _png(COLORS["Album B"]) in shown
+    run_until(app, lambda: COLORS["Album B"] in shown)
+    assert app._cover_state == "cover"
 
 
 def test_a_pick_after_the_last_file_waits_for_the_batch_to_end(app):

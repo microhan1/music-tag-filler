@@ -49,6 +49,9 @@ COVER_PX = 240
 THUMB_PX = 40
 PREVIEW_PX = 320  # hover preview of a candidate's cover
 PREVIEW_DELAY_MS = 250
+# A file's cover is read and shrunk off the Tk thread. 「Loading cover…」 shows only if that takes
+# longer than this, so clicking through the list does not flash it for a read of a few ms.
+COVER_LOAD_DELAY_MS = 150
 LYRICS_BUSY_LIMIT = 5  # this many lookups in a row failing: stop asking LRCLIB for this save
 IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif")
 CHECK = "\u2713"
@@ -268,6 +271,15 @@ class Tooltip:
             self.tip, self.label = None, None
 
 
+def _cover_thumbnail(data: bytes, size: int):
+    """The cover shrunk to the box (a Pillow image); any thread. A scan of several MB takes a
+    noticeable moment here, which is why it is not done on the Tk thread."""
+    with Image.open(io.BytesIO(data)) as im:
+        im = im.convert("RGB")
+        im.thumbnail((size, size), Image.LANCZOS)
+        return im
+
+
 class CoverStore:
     """Downloaded or user-picked covers wait on disk, not in memory, until they
     are saved: a 500-file batch would otherwise hold 100 MB of JPEGs."""
@@ -309,6 +321,9 @@ class FileState:
     has_cover: bool = False  # the file itself carries a cover (bytes are read on demand)
     cover_key: str | None = None  # a new cover waiting in the CoverStore
     cover_changed: bool = False
+    # a cover is on its way (a pick's download, queued or running): the job's candidate. Only the
+    # job named here may store its cover; the box shows 「Loading cover…」 while it is set.
+    cover_wait: object | None = None
     pending_ids: tags.Ids | None = None  # identity tags of the applied candidate, written on save
     has_lyrics: bool = False  # the file itself carries real lyrics (the text is read when shown)
     lyrics_lines: int = 0
@@ -367,6 +382,16 @@ class FileState:
         self.info = info
         self.values = info.tags.as_dict()
 
+    def may_have_cover(self) -> bool:
+        """Worth reading for the cover box: a new cover, a cover in the file, or a file the
+        batch has not opened yet (its cover is read straight from the file)."""
+        return self.cover_changed or self.has_cover or (self.info is None and not self.error)
+
+    def read_cover_for_display(self) -> bytes | None:
+        if self.info is None and not self.cover_changed:
+            return tags.read_cover(self.path)[0]
+        return self.load_cover()
+
     def load_cover(self) -> bytes | None:
         if self.cover_changed:
             return CoverStore.get(self.cover_key)
@@ -419,6 +444,13 @@ class App:
         self._placeholder = tk.PhotoImage(width=size, height=size)
         self._placeholder.put(PLACEHOLDER_BG, to=(0, 0, size, size))
         self._placeholder_ready = False
+        # 「Loading cover…」 is written on a plain grey square: the note means "no cover"
+        self._cover_blank = tk.PhotoImage(width=size, height=size)
+        self._cover_blank.put(PLACEHOLDER_BG, to=(0, 0, size, size))
+        self._cover_state = "none"  # what the box shows: "none" (the note), "cover", "loading"
+        self._cover_gen = 0  # bumped by every new look of the box; a read that ends later is dropped
+        self._cover_pending: int | None = None  # the read the box is waiting for
+        self._cover_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
         self._texts: list[tuple[tk.Misc, str, str]] = []
         self._status_key = ""
         self._status_kwargs: dict = {}
@@ -487,7 +519,7 @@ class App:
             return
         self._placeholder = ImageTk.PhotoImage(self._placeholder_image())
         self._placeholder_ready = True
-        if self._cover_photo is None:
+        if self._cover_state == "none":
             self.lbl_cover.configure(image=self._placeholder)
 
     def _placeholder_image(self) -> Image.Image:
@@ -656,8 +688,10 @@ class App:
         # cover
         cov = ttk.Frame(top)
         cov.grid(row=0, column=1, sticky="n", padx=(0, p(16)))
+        # the text is empty except while a cover loads; wrapped inside the box for longer languages
         self.lbl_cover = tk.Label(cov, image=self._placeholder, bg=CARD, bd=0, highlightthickness=1,
-                                  highlightbackground=BORDER)
+                                  highlightbackground=BORDER, compound="center", fg=MUTED, padx=0, pady=0,
+                                  font=self.font_body, wraplength=self.px(COVER_PX) - p(24))
         self.lbl_cover.pack()
         self.btn_cover = self._reg(ttk.Button(cov, command=self._cover_dialog), "btn_cover_file")
         self.btn_cover.pack(fill="x", pady=(p(8), 0))
@@ -811,6 +845,8 @@ class App:
         self.tip_feedback.refresh()
         for tip in self.tips_only_missing_cover:
             tip.refresh()
+        if self._cover_state == "loading":
+            self.lbl_cover.configure(text=t("cover_loading"))
         self._update_file_info()
         if self._status_key:
             self._set_status(self._status_key, **self._status_kwargs)
@@ -927,6 +963,7 @@ class App:
         finally:
             self._ui(self._mark_searching, list(self.files), False)
             self._ui(self._set_busy, False)
+            self._ui(self._settle_cover_waits)
 
     def _ui(self, fn, *args, **kwargs) -> None:
         """Call fn on the Tk thread (workers must never touch widgets directly)."""
@@ -1128,9 +1165,7 @@ class App:
                     s.selected, s.auto = pick, True
                     self._apply_values(s, pick, overwrite=False)
                     if not s.has_cover:
-                        cover = pipeline.fetch_cover(pick, self._country, on_wait=self._on_wait, cancel=self.cancel_event)
-                        if cover:
-                            s.cover_key, s.cover_changed = self.covers.put(cover), True
+                        self._fetch_pick_cover(s, pick)
             self._ui(self._after_file_loaded, s)
         auto = sum(1 for s in states if s.auto)
         self._ui(self._mark_searching, states, False)  # cancelled or skipped files must not spin forever
@@ -1143,6 +1178,18 @@ class App:
         if skipped_with_cover:
             self._ui(self._prepend_status, "msg_cover_skipped", count=skipped_with_cover)
         self._ui(self._refresh_list)
+
+    def _fetch_pick_cover(self, s: FileState, pick: Candidate) -> None:
+        """Worker: the cover of the batch's automatic pick. Silent when none is found (the box
+        then goes back to the note); 「Loading cover…」 shows while it downloads."""
+        self._wait_cover(s, pick)
+        try:
+            cover = pipeline.fetch_cover(pick, self._country, on_wait=self._on_wait, cancel=self.cancel_event)
+            # the user may have picked another row or an image file meanwhile: theirs wins
+            if cover and s.cover_wait is pick and s.selected is pick:
+                s.cover_key, s.cover_changed = self.covers.put(cover), True
+        finally:
+            self._end_cover_wait(s, pick)
 
     def _after_file_loaded(self, s: FileState) -> None:
         self._refresh_list()
@@ -1161,7 +1208,7 @@ class App:
             self._loading_entries = False
         self._update_file_info()
         self._paint_fields()
-        self._show_cover(s.load_cover() if s else None)
+        self._render_cover(s)
         self._fill_tree(s.candidates if s else [])
         self._set_loading(bool(s and s.searching))
         if s and s.error:
@@ -1245,20 +1292,100 @@ class App:
         self._update_lyrics_info()
         self._refresh_list()
 
-    def _show_cover(self, data: bytes | None) -> None:
-        self._cover_photo = None
-        if data:
+    # The cover box has three looks: the cover, the note (no cover), and 「Loading cover…」 on a
+    # plain square. Covers that come from somewhere slow load in one of two ways:
+    #   - a download for a pick (batch auto-pick, or the user's pick waiting its turn, LESSONS A28):
+    #     s.cover_wait is set for as long as the job is queued or running;
+    #   - reading a file's own cover or a stored one and shrinking it: done by _cover_pool, and the
+    #     loading text appears only if it takes longer than COVER_LOAD_DELAY_MS.
+    # Every new look bumps _cover_gen, so a read that ends after the user moved to another file
+    # is dropped instead of drawn over that file (LESSONS A29).
+    def _render_cover(self, s: FileState | None) -> None:
+        """Tk thread: show s's cover, the note, or the loading text."""
+        self._cover_gen += 1
+        gen = self._cover_gen
+        self._cover_pending = None
+        if s is not None and s.cover_wait is not None:
+            self._paint_cover_loading()
+            return
+        if s is None or not s.may_have_cover():
+            self._paint_cover(None)
+            return
+        self._cover_pending = gen
+        try:
+            self._cover_pool.submit(self._read_cover_job, s, gen, self.px(COVER_PX))
+        except RuntimeError:  # the pool is shut down: the window is closing
+            self._cover_pending = None
+            return
+        self.root.after(COVER_LOAD_DELAY_MS, lambda: self._cover_slow(gen))
+
+    def _read_cover_job(self, s: FileState, gen: int, size: int) -> None:
+        """Cover pool: read and shrink; the Tk thread draws it if the box still wants it."""
+        try:
+            data = s.read_cover_for_display()
+            im = _cover_thumbnail(data, size) if data else None
+        except Exception:  # unreadable file or image: shown as no cover, as before
+            im = None
+        self._ui(self._cover_read_done, s, gen, im)
+
+    def _cover_slow(self, gen: int) -> None:
+        if self._cover_pending == gen and not self._closing:
+            self._paint_cover_loading()
+
+    def _cover_read_done(self, s: FileState, gen: int, im) -> None:
+        if gen != self._cover_gen or s is not self.current:
+            return  # an older read: the box has moved on to another file or another look
+        self._cover_pending = None
+        self._paint_cover(im)
+
+    def _paint_cover(self, im) -> None:
+        """The cover (a Pillow image), or the note when im is None."""
+        photo = None
+        if im is not None:
             try:
-                with Image.open(io.BytesIO(data)) as im:
-                    im = im.convert("RGB")
-                    size = self.px(COVER_PX)
-                    im.thumbnail((size, size), Image.LANCZOS)
-                    self._cover_photo = ImageTk.PhotoImage(im)
+                photo = ImageTk.PhotoImage(im)
             except Exception:
-                self._cover_photo = None
+                photo = None
+        self._cover_photo = photo
+        self._cover_state = "cover" if photo is not None else "none"
         if not self._placeholder_ready and ImageTk.loaded:
             self._finish_placeholder()  # Pillow is in (this cover, or a file's cover, brought it): draw the note too
-        self.lbl_cover.configure(image=self._cover_photo if self._cover_photo is not None else self._placeholder)
+        self.lbl_cover.configure(image=photo if photo is not None else self._placeholder, text="")
+
+    def _paint_cover_loading(self) -> None:
+        self._cover_photo = None
+        self._cover_state = "loading"
+        self.lbl_cover.configure(image=self._cover_blank, text=t("cover_loading"))
+
+    def _refresh_cover(self, s: FileState) -> None:
+        """Tk thread: redraw the box if it shows s."""
+        if s is self.current:
+            self._render_cover(s)
+
+    def _wait_cover(self, s: FileState, token: object) -> None:
+        """Any thread: a cover for s is on its way from the job named by token."""
+        with self._covers_lock:
+            s.cover_wait = token
+        self._ui(self._refresh_cover, s)
+
+    def _end_cover_wait(self, s: FileState, token: object) -> None:
+        """Any thread: the job named by token is over (cover stored, failed, or dropped)."""
+        with self._covers_lock:
+            if s.cover_wait is token:
+                s.cover_wait = None
+        self._ui(self._refresh_cover, s)
+
+    def _settle_cover_waits(self) -> None:
+        """Tk thread, after a worker ends: no file may stay "loading" with nothing coming for it."""
+        if self._busy() or self._closing:
+            return
+        with self._covers_lock:
+            waiting = {id(s) for s, _cand in self._covers_wanted.values()}
+            stale = [s for s in self.files if s.cover_wait is not None and id(s) not in waiting]
+            for s in stale:
+                s.cover_wait = None
+        if any(s is self.current for s in stale):
+            self._render_cover(self.current)
 
     def apply_cover_to_all(self) -> None:
         """Give every file in the list the cover shown now (an album folder usually
@@ -1308,7 +1435,9 @@ class App:
         self.current.cover_key, self.current.cover_changed, self.current.saved = self.covers.put(data), True, False
         if self.current.auto:
             self.current.confirmed = True
-        self._show_cover(data)
+        with self._covers_lock:
+            self.current.cover_wait = None  # the user's own image wins over a download still on its way
+        self._render_cover(self.current)
         self._refresh_list()
 
     # ------------------------------------------------------------ candidates table
@@ -1573,7 +1702,12 @@ class App:
     def cancel(self) -> None:
         self.cancel_event.set()
         with self._covers_lock:
+            for s, cand in self._covers_wanted.values():
+                if s.cover_wait is cand:
+                    s.cover_wait = None
             self._covers_wanted.clear()
+        if self.current is not None:
+            self._render_cover(self.current)
         self._set_status("status_cancelled")
 
     # ------------------------------------------------------------ apply / save / undo
@@ -1595,14 +1729,17 @@ class App:
             return
         s.selected, s.auto, s.confirmed = cand, False, True
         self._apply_values(s, cand)
-        self._show_file(s)
-        if cand.cover_url or cand.album:  # the album name alone can find a cover (iTunes fallback)
-            # Double-click and Enter in the table apply a pick while the list is still being
-            # searched; _run would drop the cover job then, so it waits its turn (LESSONS A28).
-            with self._covers_lock:
+        wants_cover = bool(cand.cover_url or cand.album)  # the album name alone can find a cover (iTunes fallback)
+        with self._covers_lock:
+            # 「Loading cover…」 from now until the download ends, even while it waits its turn
+            s.cover_wait = cand if wants_cover else None
+            if wants_cover:
+                # Double-click and Enter in the table apply a pick while the list is still being
+                # searched; _run would drop the cover job then, so it waits its turn (LESSONS A28).
                 self._covers_wanted[id(s)] = (s, cand)  # a later pick for the same file replaces it
-            if not self._covers_poll:  # one waiting loop is enough
-                self._start_wanted_covers()
+        self._show_file(s)
+        if wants_cover and not self._covers_poll:  # one waiting loop is enough
+            self._start_wanted_covers()
 
     def _start_wanted_covers(self) -> None:
         """Tk thread: fetch the waiting covers now, or once the running job is over."""
@@ -1625,19 +1762,23 @@ class App:
                 if not self._covers_wanted:
                     return
                 _key, (s, cand) = self._covers_wanted.popitem()
-            if s in self.files and s.selected is cand:
+            if s in self.files and s.selected is cand and s.cover_wait is cand:
                 self._fetch_cover_job(s, cand)
+            else:
+                self._end_cover_wait(s, cand)
 
     def _fetch_cover_job(self, s: FileState, cand: Candidate) -> None:
-        data = pipeline.fetch_cover(cand, self._country, on_wait=self._on_wait, cancel=self.cancel_event)
-        if s.selected is not cand:  # the user picked another row meanwhile: its own cover is on its way
-            return
-        if data:
-            s.cover_key, s.cover_changed = self.covers.put(data), True
-            if s is self.current:
-                self._ui(self._show_cover, data)
-        else:
-            self._ui(self._set_status, "msg_cover_failed")
+        try:
+            data = pipeline.fetch_cover(cand, self._country, on_wait=self._on_wait, cancel=self.cancel_event)
+            # the user picked another row (its own cover is on its way) or an image file meanwhile
+            if s.selected is not cand or s.cover_wait is not cand:
+                return
+            if data:
+                s.cover_key, s.cover_changed = self.covers.put(data), True
+            else:
+                self._ui(self._set_status, "msg_cover_failed")
+        finally:
+            self._end_cover_wait(s, cand)  # redraws the box from what is stored now, if s is on screen
 
     def save_current(self) -> None:
         s = self.current
@@ -2058,6 +2199,7 @@ class App:
             self.root.after(100, self._close_when_idle)
             return
         self._thumb_pool.shutdown(wait=False, cancel_futures=True)
+        self._cover_pool.shutdown(wait=False, cancel_futures=True)
         self.covers.close()
         self.root.destroy()
 

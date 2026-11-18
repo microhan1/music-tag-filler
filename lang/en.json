@@ -85,6 +85,7 @@
   "status_saving": "Saving {index}/{total} · {name}",
   "msg_searching": "Searching…",
   "msg_loading": "Loading search results",
+  "cover_loading": "Loading cover…",
   "msg_fingerprinting": "Finding by sound (results are added to the list)",
   "msg_results": "{count} candidates",
   "msg_no_results": "No results. Edit the query or try Find by sound",
